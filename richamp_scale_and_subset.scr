@@ -1,0 +1,57 @@
+#!/bin/bash
+#SBATCH --constraint=hatteras
+#SBATCH --job-name=uri_post
+#SBATCH --output=uri_post.out
+#SBATCH --error=uri_post.err
+#SBATCH -p lowpri
+#SBATCH -n 1
+#SBATCH --mem=16G
+
+asgs_python=$1  # first parameter passed from richamp_scale_and_subset.sh
+SCENARIODIR=$2  # second parameter
+postprocessdir=/home/joshua_p/postprocess
+
+declare -A properties
+RUNPROPERTIES=$SCENARIODIR/run.properties
+echo "Loading properties."
+# get loadProperties function
+SCRIPTDIR=`sed -n 's/[ ^]*$//;s/path.scriptdir\s*:\s*//p' $RUNPROPERTIES`
+source $SCRIPTDIR/properties.sh
+# load run.properties file into associative array
+loadProperties $RUNPROPERTIES
+echo "Finished loading properties."
+# get tc forcing status from run.properties
+tc_forcing=${properties['forcing.tropicalcyclone']}
+
+# if TROPICALCYCLONE=on, call metget to get winds
+if [ $tc_forcing == "on" ]; then 
+   # get date range from run.properties
+   t_start_raw=${properties['RunStartTime']}
+   t_end_raw=${properties['RunEndTime']}
+   # convert from yyyymmddHH to yyyy-mm-dd HH:MM for metget call
+   t_start=${t_start_raw:0:4}-${t_start_raw:4:2}-${t_start_raw:6:2}" "${t_start_raw:8:2}:${t_start_raw:10:2}00
+   t_end=${t_end_raw:0:4}-${t_end_raw:4:2}-${t_end_raw:6:2}" "${t_end_raw:8:2}:${t_end_raw:10:2}00
+   # cd to a good directory for the metget winds to live
+   cd $postprocessdir/metget_temp
+   wind_filename=gfs_forecast
+   # call metget
+   $asgs_python $postprocessdir/get_metget_data.py --domain gfs 0.125 -72 41 -71 43 --start "$t_start" --end "$t_end" --timestep 3600 --output $wind_filename --multiple_forecasts --apikey i0XJKyZJc04JTriYnU7yvsitZDjRsMC2MaPosTNe --endpoint https://api.metget.zachcobell.com --format owi-ascii --variable wind_pressure
+   # define wind
+   wind=$PWD/$wind_filename\_00.win
+fi 
+
+# call python script to trim wind, interpolate to RICHAMP region of interest, and scale based on z0
+output=$SCENARIODIR/RICHAMP_wind
+highres_roughness=$postprocessdir/NLCD_z0_RICHAMP_Reg_Grid.nc
+wind_roughness=$postprocessdir/gfs-roughness.nc
+if [ $tc_forcing == "off"  ]; then
+   wind=$SCENARIODIR/fort.222
+fi
+$asgs_python $postprocessdir/scale_and_subset.py -o $output -hr $highres_roughness -wr $wind_roughness -w $wind
+
+# call matlab script to trim depth data to RICHAMP region of interest
+indir=$SCENARIODIR/  # Matlab script expects trailing slashes
+outdir=$SCENARIODIR/
+module load matlab/2020b
+matlab -nodesktop -nodisplay -sd $postprocessdir -r "subset_fort63_richamp $indir $outdir"
+
