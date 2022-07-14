@@ -31,8 +31,10 @@ until [[ -e $targetScript.start ]]; do
     echo "[$(date +'%Y-%h-%d-T%H:%M:%S%z')] Waiting for $targetScript to start." >> $logfile
     sleep $jobCheckIntervalSeconds
 done
+echo "[$(date +'%Y-%h-%d-T%H:%M:%S%z')] The batch job for $targetScript has started." >> $logfile
 # wait for batch job to finish successfully or exit with an error
 until [[ -e $targetScript.finish || -e $targetScript.error ]]; do
     echo "[$(date +'%Y-%h-%d-T%H:%M:%S%z')] Waiting for $targetScript to finish." >> $logfile
     sleep $jobCheckIntervalSeconds
 done
+echo "[$(date +'%Y-%h-%d-T%H:%M:%S%z')] The batch job for $targetScript has exited." >> $logfile
