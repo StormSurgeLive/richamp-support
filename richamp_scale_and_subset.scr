@@ -6,6 +6,10 @@
 #SBATCH -p lowpri
 #SBATCH -n 1
 #SBATCH --mem=16G
+
+# METGET_API_KEY environment variable must be set in order for
+# get_metget_data.py to succeed
+
 targetScript="richamp_scale_and_subset.scr"
 echo "\"start\" : \"[$(date +'%Y-%h-%d-T%H:%M:%S%z')]\", \"jobid\" : \"${%JOBID%}\"" > $targetScript.start # <-OVERWRITE
 asgs_python=$1  # first parameter passed from richamp_scale_and_subset.sh
@@ -36,7 +40,7 @@ if [ $tc_forcing == "on" ]; then
    cd $postprocessdir/metget_temp
    wind_filename=gfs_forecast
    # call metget
-   $asgs_python $postprocessdir/get_metget_data.py --domain gfs 0.125 -72 41 -71 43 --start "$t_start" --end "$t_end" --timestep 3600 --output $wind_filename --multiple_forecasts --apikey i0XJKyZJc04JTriYnU7yvsitZDjRsMC2MaPosTNe --endpoint https://api.metget.zachcobell.com --format owi-ascii --variable wind_pressure
+   $asgs_python $postprocessdir/get_metget_data.py --domain gfs 0.125 -72 41 -71 43 --start "$t_start" --end "$t_end" --timestep 3600 --output $wind_filename --multiple_forecasts --endpoint https://api.metget.zachcobell.com --format owi-ascii --variable wind_pressure
    # define wind
    wind=$PWD/$wind_filename\_00.win
 fi
