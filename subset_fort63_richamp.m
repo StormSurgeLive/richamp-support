@@ -1,7 +1,7 @@
 function subset_fort63_richamp(indir, outdir)
     %% output directory & filename
     infile='fort.63.nc';
-    outfile='RICHAMP_depth.nc';
+    outfile='RICHAMP_fort63.nc';
     lonrange=[-71-54/60 -71-6/60-30/3600]; latrange=[41+8/60+30/3600 42+2/60+30/3600];
     %% read in
     t0unix=datenum([1970 1 1 0 0 0]);            % start of unix time epoch
