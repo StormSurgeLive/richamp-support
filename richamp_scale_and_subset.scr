@@ -6,7 +6,8 @@
 #SBATCH -p lowpri
 #SBATCH -n 1
 #SBATCH --mem=16G
-
+targetScript="richamp_scale_and_subset.scr"
+echo "\"start\" : \"[$(date +'%Y-%h-%d-T%H:%M:%S%z')]\", \"jobid\" : \"${%JOBID%}\"" > $targetScript.start # <-OVERWRITE
 asgs_python=$1  # first parameter passed from richamp_scale_and_subset.sh
 SCENARIODIR=$2  # second parameter
 postprocessdir=/home/joshua_p/postprocess
@@ -24,7 +25,7 @@ echo "Finished loading properties."
 tc_forcing=${properties['forcing.tropicalcyclone']}
 
 # if TROPICALCYCLONE=on, call metget to get winds
-if [ $tc_forcing == "on" ]; then 
+if [ $tc_forcing == "on" ]; then
    # get date range from run.properties
    t_start_raw=${properties['RunStartTime']}
    t_end_raw=${properties['RunEndTime']}
@@ -38,7 +39,7 @@ if [ $tc_forcing == "on" ]; then
    $asgs_python $postprocessdir/get_metget_data.py --domain gfs 0.125 -72 41 -71 43 --start "$t_start" --end "$t_end" --timestep 3600 --output $wind_filename --multiple_forecasts --apikey i0XJKyZJc04JTriYnU7yvsitZDjRsMC2MaPosTNe --endpoint https://api.metget.zachcobell.com --format owi-ascii --variable wind_pressure
    # define wind
    wind=$PWD/$wind_filename\_00.win
-fi 
+fi
 
 # call python script to trim wind, interpolate to RICHAMP region of interest, and scale based on z0
 output=$SCENARIODIR/RICHAMP_wind
@@ -54,4 +55,9 @@ indir=$SCENARIODIR/  # Matlab script expects trailing slashes
 outdir=$SCENARIODIR/
 module load matlab/2020b
 matlab -nodesktop -nodisplay -sd $postprocessdir -r "subset_fort63_richamp $indir $outdir"
-
+# check to see if matlab script finished successfully
+if [[ $? == 0 ]]; then
+   echo "\"finish\" : \"[$(date +'%Y-%h-%d-T%H:%M:%S%z')]\", \"jobid\" : \"${%JOBID%}\"" > $targetScript.finish # <-OVERWRITE
+else
+   echo "\"error\" : \"[$(date +'%Y-%h-%d-T%H:%M:%S%z')]\", \"jobid\" : \"${%JOBID%}\"" > $targetScript.error # <-OVERWRITE
+fi
