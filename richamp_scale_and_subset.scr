@@ -58,6 +58,11 @@ $asgs_python $postprocessdir/scale_and_subset.py -o $output -hr $highres_roughne
 indir=$SCENARIODIR/  # Matlab script expects trailing slashes
 outdir=$SCENARIODIR/
 module load matlab/2020b
+# jgf: For reference, here is an example of starting a Matlab script
+# as a batch job with command line options as well as exception handling
+# (from another project):
+# options="commandLineOptions=true; refwlmode=2; writeoutfil=63; filstations='/home/ncfs/offset_source_stations.txt'; year=2016; "
+# matlab -nodisplay -nosplash -nodesktop -r "${options} try, run('/home/ncfs/asgs/2014stable/input/data_assimilation/offsetSurfaceGen.m'), catch me, fprintf('%s / %s\n',me.identifier,me.message), end, exit"
 matlab -nodesktop -nodisplay -sd $postprocessdir -r "subset_fort63_richamp $indir $outdir"
 # check to see if matlab script finished successfully
 if [[ $? == 0 ]]; then
