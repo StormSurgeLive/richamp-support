@@ -175,24 +175,29 @@ class NetcdfOutput:
         self.__group_main_dim_latitude = self.__group_main.createDimension("latitude", len(self.__lat))
 
         # Create variables (with compression)
-        self.__group_main_var_time = self.__group_main.createVariable("time", "i4", "time", zlib=True, complevel=2,
-                                                                      fill_value=netCDF4.default_fillvals["i4"])
-        self.__group_main_var_lon = self.__group_main.createVariable("lon", "f8", "longitude", zlib=True, complevel=2,
-                                                                     fill_value=netCDF4.default_fillvals["f8"])
-        self.__group_main_var_lat = self.__group_main.createVariable("lat", "f8", "latitude", zlib=True, complevel=2,
-                                                                     fill_value=netCDF4.default_fillvals["f8"])
-        self.__group_main_var_u10 = self.__group_main.createVariable("U10", "f4", ("time", "latitude", "longitude"), zlib=True,
-                                                                     complevel=2,
-                                                                     fill_value=netCDF4.default_fillvals["f4"])
-        self.__group_main_var_v10 = self.__group_main.createVariable("V10", "f4", ("time", "latitude", "longitude"), zlib=True,
-                                                                     complevel=2,
-                                                                     fill_value=netCDF4.default_fillvals["f4"])
+        self.__group_main_var_time      = self.__group_main.createVariable("time", "i4", "time", zlib=True, complevel=2,
+                                                                           fill_value=netCDF4.default_fillvals["i4"])
+        self.__group_main_var_time_unix = self.__group_main.createVariable("time_unix", "i8", "time", zlib=True, complevel=2,
+                                                                           fill_value=netCDF4.default_fillvals["i4"])
+        self.__group_main_var_lon       = self.__group_main.createVariable("lon", "f8", "longitude", zlib=True, complevel=2,
+                                                                           fill_value=netCDF4.default_fillvals["f8"])
+        self.__group_main_var_lat       = self.__group_main.createVariable("lat", "f8", "latitude", zlib=True, complevel=2,
+                                                                           fill_value=netCDF4.default_fillvals["f8"])
+        self.__group_main_var_u10       = self.__group_main.createVariable("U10", "f4", ("time", "latitude", "longitude"), zlib=True,
+                                                                           complevel=2,fill_value=netCDF4.default_fillvals["f4"])
+        self.__group_main_var_v10       = self.__group_main.createVariable("V10", "f4", ("time", "latitude", "longitude"), zlib=True,
+                                                                           complevel=2,fill_value=netCDF4.default_fillvals["f4"])
 
         # Add attributes to variables
         self.__base_date = datetime(1990, 1, 1, 0, 0, 0)
         self.__group_main_var_time.units = "minutes since 1990-01-01 00:00:00 Z"
         self.__group_main_var_time.axis = "T"
         self.__group_main_var_time.coordinates = "time"
+        
+        self.__base_date_unix = datetime(1970, 1, 1, 0, 0, 0)
+        self.__group_main_var_time_unix.units = "seconds since 1970-01-01 00:00:00"
+        self.__group_main_var_time_unix.axis = "T"
+        self.__group_main_var_time_unix.coordinates = "time"
 
         self.__group_main_var_lon.coordinates = "lon"
         self.__group_main_var_lon.units = "degrees_east"
@@ -216,8 +221,12 @@ class NetcdfOutput:
     def append(self, idx, date, uvel, vvel):
         delta = (date - self.__base_date)
         minutes = round((delta.days * 86400 + delta.seconds) / 60)
+        
+        delta_unix = (date - self.__base_date_unix)
+        seconds = round(delta_unix.days * 86400 + delta_unix.seconds)
 
         self.__group_main_var_time[idx] = minutes
+        self.__group_main_var_time_unix[idx] = seconds
         self.__group_main_var_u10[idx, :, :] = uvel
         self.__group_main_var_v10[idx, :, :] = vvel
 
@@ -307,24 +316,51 @@ class OwiAsciiWind:
         return WindData(self.__date, self.__grid, uvel, vvel)
     
     
-def roughness_adjust(wind_lon, wind_lat, wind_vel, z0_wr, z0_hr):
+def roughness_adjust(wind_lon, wind_lat, u_vel, v_vel, u_or_v, z0_wr, z0_hr):
     from scipy import interpolate
-    from numpy import log
-    # Interpolate wind at roughness file grid points
-    wind_interpolant = interpolate.interp2d(wind_lon, wind_lat, wind_vel, kind='linear')
-    wind_hr_grid = wind_interpolant(z0_hr.lon(), z0_hr.lat())
-    del wind_interpolant
-    z0_interpolant = interpolate.interp2d(z0_wr.lon(), z0_wr.lat(), z0_wr.land_rough(), kind='linear')
-    z0_wr_hr_grid = z0_interpolant(z0_hr.lon(), z0_hr.lat())
-    del z0_interpolant
-    # Determine the wind speed high above the ground using equations 9 & 10 here: https://dr.lib.iastate.edu/handle/20.500.12876/1131
+    from numpy import log, sqrt, zeros
+    from math import exp
+    import water_z0
+    # Adjust every z0_wr as if it's water; save to z0_wr_water
+    k = 0.40
+    z_obs = 10
+    wind_mag = sqrt(u_vel**2 + v_vel**2)
+    z0_wr_water = zeros((len(wind_mag), len(wind_mag[0])))
+    for i in range(len(wind_mag)):
+        for j in range(len(wind_mag[0])):
+            if wind_mag[i,j] == 0: 
+                continue # z0_wr_water is initialized to 0
+            else:
+                ust_est = water_z0.retrieve_ust_U10(wind_mag[i,j], z_obs)
+                z0_wr_water[i,j] = z_obs * exp(-(k * wind_mag[i,j]) / ust_est) 
+    # Interpolate z0_wr to wind resolution just in case their resolution differs
+    z0_wr_interpolant = interpolate.interp2d(z0_wr.lon(), z0_wr.lat(), z0_wr.land_rough(), kind='linear')
+    z0_wr_wr_grid = z0_wr_interpolant(wind_lon, wind_lat)
+    del z0_wr_interpolant
+    # Scale input wind up to z_ref before interpolating using equations 9 & 10 here: https://dr.lib.iastate.edu/handle/20.500.12876/1131
     z_ref = 80 # Per Isaac the logarithmic profile only applies in the near surface layer, which extends roughly 80m up; to verify with lit review
-    b = 1 / (log(10) - log(z0_wr_hr_grid)) # Eq 10
-    wind_z_ref = wind_hr_grid * (1 + b * log(z_ref / 10)) # Eq 9
+    b = 1 / (log(10) - log(z0_wr_wr_grid)) # Eq 10
+    if u_or_v == 'u':
+        wind_z_ref = u_vel * (1 + b * log(z_ref / 10)) # Eq 9
+    elif u_or_v == 'v':
+        wind_z_ref = v_vel * (1 + b * log(z_ref / 10)) # Eq 9
+    # Interpolate wind_z_ref and z0_wr_water to z0_hr resolution
+    wind_interpolant = interpolate.interp2d(wind_lon, wind_lat, wind_z_ref, kind='linear')
+    wind_z_ref_hr_grid = wind_interpolant(z0_hr.lon(), z0_hr.lat())
+    del wind_interpolant
+    z0_water_interpolant = interpolate.interp2d(wind_lon, wind_lat, z0_wr_water, kind='linear')
+    z0_wr_water_hr_grid = z0_water_interpolant(z0_hr.lon(), z0_hr.lat())
+    del z0_water_interpolant
+    # Re-assign roughness values over sea for z0_hr
+    z0_hr_hr_grid = z0_hr.land_rough()
+    for i in range(len(z0_hr_hr_grid)):
+        for j in range(len(z0_hr_hr_grid[0])):
+            if z0_hr_hr_grid[i,j] < 0.0031: # == 0.003, but floats are evil and round() is slow
+                z0_hr_hr_grid[i,j] = z0_wr_water_hr_grid[i,j]
     # Scale back down to 10 meters using the local z0 value
-    b = 1 / (log(10) - log(z0_hr.land_rough())) # Eq 10
-    return wind_z_ref / (1 + b * log(z_ref / 10)) # Eq 9
-   
+    b = 1 / (log(10) - log(z0_hr_hr_grid)) # Eq 10
+    wind_adjust = wind_z_ref_hr_grid / (1 + b * log(z_ref / 10)) # Eq 9; roughness-adjusted wind speed
+    return wind_adjust
     
 def main():
     import argparse
@@ -368,8 +404,8 @@ def main():
         wind_data = owi_ascii.get(time_index)
         if not wind:
             wind = NetcdfOutput(args.o, z0_hr.lon(), z0_hr.lat())
-        uvel_scaled = roughness_adjust(wind_data.wind_grid().lon1d(), wind_data.wind_grid().lat1d(), wind_data.u_velocity(), z0_wr, z0_hr)
-        vvel_scaled = roughness_adjust(wind_data.wind_grid().lon1d(), wind_data.wind_grid().lat1d(), wind_data.v_velocity(), z0_wr, z0_hr)
+        uvel_scaled = roughness_adjust(wind_data.wind_grid().lon1d(), wind_data.wind_grid().lat1d(), wind_data.u_velocity(), wind_data.v_velocity(), 'u', z0_wr, z0_hr)
+        vvel_scaled = roughness_adjust(wind_data.wind_grid().lon1d(), wind_data.wind_grid().lat1d(), wind_data.u_velocity(), wind_data.v_velocity(), 'v', z0_wr, z0_hr)
         wind.append(time_index, wind_data.date(), uvel_scaled, vvel_scaled)
         time_index += 1  
     
