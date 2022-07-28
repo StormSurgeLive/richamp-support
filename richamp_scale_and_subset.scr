@@ -7,7 +7,7 @@
 #SBATCH -n 1
 #SBATCH --mem=16G
 
-# METGET_API_KEY environment variable must be set in order for
+# METGET_API_KEY and METGET_ENDPOINT environment variables must be set in order for
 # get_metget_data.py to succeed
 
 targetScript="richamp_scale_and_subset.scr"
