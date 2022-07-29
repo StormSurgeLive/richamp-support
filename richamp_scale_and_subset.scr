@@ -42,7 +42,7 @@ if [ $tc_forcing == "on" ]; then
    # call metget
    $asgs_python $postprocessdir/get_metget_data.py --domain gfs 0.25 -72 41 -71 43 --start "$t_start" --end "$t_end" --timestep 3600 --output $wind_filename --multiple_forecasts --format owi-ascii --variable wind_pressure
    # define wind
-   wind=$PWD/$wind_filename\_00.win
+   wind=$PWD/$wind_filename\_00.wnd
 fi
 
 # call python script to trim wind, interpolate to RICHAMP region of interest, and scale based on z0
