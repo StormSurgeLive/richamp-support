@@ -3,17 +3,11 @@
 # Requirements: python3, numpy
 #
 # This is a Python port of Xuanyu Chen's retrieve_ust_U10.m and cal_z0_from_ustar.m Matlab functions
-# The alternative would be installing the Matlab API for python or oct2py on any relevant server
+# This version also supports vector inputs for performance reasons
 #
 def retrieve_ust_U10(u_obs, z_obs):
-    from math import exp, isnan
-    from numpy import arange, argmin, empty
-    
-    if isnan(u_obs) or u_obs == 0:
-        ust_est = float("NaN")
-        # U10 = float("NaN")
-        return ust_est #, U10
-    
+    from numpy import arange, argmin, empty, exp #, log
+   
     k = 0.40    
     y = exp(k * u_obs)
     res = 0.001
@@ -25,18 +19,21 @@ def retrieve_ust_U10(u_obs, z_obs):
             Y[0] = 1 # python throws a divide by zero error otherwise; Matlab doesn't, since the exponent is 0
         else:
             Y[i] = (z_obs / z0[i])**ust[i]
-
+            
     # find Y closest to y and then retrieve corresponding ust_est
-    dif = abs(y - Y)        
-    loc = argmin(dif)
-    if Y[loc] - y > 0:
-        slp = (Y[loc] - Y[loc-1]) / res
-        dust = (y - Y[loc-1]) / slp
-        ust_est = ust[loc-1] + dust
-    else:
-        slp = (Y[loc+1] - Y[loc]) / res
-        dust = (y - Y[loc]) / slp
-        ust_est = ust[loc] + dust
+    ust_est = empty((len(u_obs), len(u_obs[0])))
+    for i in range(len(u_obs)):
+        for j in range(len(u_obs[0])):
+            dif = abs(y[i,j] - Y)        
+            loc = argmin(dif)
+            if Y[loc] - y[i,j] > 0:
+                slp = (Y[loc] - Y[loc-1]) / res
+                dust = (y[i,j] - Y[loc-1]) / slp
+                ust_est[i,j] = ust[loc-1] + dust
+            else:
+                slp = (Y[loc+1] - Y[loc]) / res
+                dust = (y[i,j] - Y[loc]) / slp
+                ust_est[i,j] = ust[loc] + dust
     
     # # use ust_y to calculate U10; not relevant for RICHAMP, so commenting out
     # z0_ust_est = cal_z0_from_ustar(ust_est)

@@ -178,7 +178,7 @@ class NetcdfOutput:
         self.__group_main_var_time      = self.__group_main.createVariable("time", "i4", "time", zlib=True, complevel=2,
                                                                            fill_value=netCDF4.default_fillvals["i4"])
         self.__group_main_var_time_unix = self.__group_main.createVariable("time_unix", "i8", "time", zlib=True, complevel=2,
-                                                                           fill_value=netCDF4.default_fillvals["i4"])
+                                                                           fill_value=netCDF4.default_fillvals["i8"])
         self.__group_main_var_lon       = self.__group_main.createVariable("lon", "f8", "longitude", zlib=True, complevel=2,
                                                                            fill_value=netCDF4.default_fillvals["f8"])
         self.__group_main_var_lat       = self.__group_main.createVariable("lat", "f8", "latitude", zlib=True, complevel=2,
@@ -195,7 +195,7 @@ class NetcdfOutput:
         self.__group_main_var_time.coordinates = "time"
         
         self.__base_date_unix = datetime(1970, 1, 1, 0, 0, 0)
-        self.__group_main_var_time_unix.units = "seconds since 1970-01-01 00:00:00"
+        self.__group_main_var_time_unix.units = "seconds since 1970-01-01 00:00:00 Z"
         self.__group_main_var_time_unix.axis = "T"
         self.__group_main_var_time_unix.coordinates = "time"
 
@@ -318,21 +318,14 @@ class OwiAsciiWind:
     
 def roughness_adjust(wind_lon, wind_lat, u_vel, v_vel, u_or_v, z0_wr, z0_hr):
     from scipy import interpolate
-    from numpy import log, sqrt, zeros
-    from math import exp
+    from numpy import exp, log, sqrt
     import water_z0
     # Adjust every z0_wr as if it's water; save to z0_wr_water
     k = 0.40
     z_obs = 10
     wind_mag = sqrt(u_vel**2 + v_vel**2)
-    z0_wr_water = zeros((len(wind_mag), len(wind_mag[0])))
-    for i in range(len(wind_mag)):
-        for j in range(len(wind_mag[0])):
-            if wind_mag[i,j] == 0: 
-                continue # z0_wr_water is initialized to 0
-            else:
-                ust_est = water_z0.retrieve_ust_U10(wind_mag[i,j], z_obs)
-                z0_wr_water[i,j] = z_obs * exp(-(k * wind_mag[i,j]) / ust_est) 
+    ust_est = water_z0.retrieve_ust_U10(wind_mag, z_obs)
+    z0_wr_water = z_obs * exp(-(k * wind_mag) / ust_est) 
     # Interpolate z0_wr to wind resolution just in case their resolution differs
     z0_wr_interpolant = interpolate.interp2d(z0_wr.lon(), z0_wr.lat(), z0_wr.land_rough(), kind='linear')
     z0_wr_wr_grid = z0_wr_interpolant(wind_lon, wind_lat)
