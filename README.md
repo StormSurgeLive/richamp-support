@@ -1,6 +1,6 @@
 # richamp-support
 
-=== ASGS Post-Processing Setup Instructions (hatteras) ===
+=== ASGS Post-Processing Setup Instructions on hatteras ===
 
 NOTE: You should already have set up an ASGS instance before you go through this setup. If you haven’t, do that first.
 
