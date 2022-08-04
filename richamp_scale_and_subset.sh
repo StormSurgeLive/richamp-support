@@ -7,7 +7,7 @@ asgs_python=$(which python3) # jgf: I don't think you need this
 # script is executed
 ADVISDIR=$2
 ENSTORM=$7
-SCENARIODIR=$ADVISDIR/$ENSTORM # Should also be PWD, but I would rather not assume; ENSTORM should be the same as SCENARIO (used to form SCENARIODIR elsewhere)
+SCENARIODIR=$ADVISDIR/$ENSTORM # ENSTORM should be the same as SCENARIO (used to form SCENARIODIR elsewhere)
 #
 logfile=${0}.log
 targetScript="richamp_scale_and_subset.scr"
@@ -17,7 +17,7 @@ for ending in submit start finish error ; do
 done
 #
 echo "[$(date +'%Y-%h-%d-T%H:%M:%S%z')] $0: Submitting $targetScript $asgs_python $SCENARIODIR" > $targetScript.submit | tee --append $logfile
-sbatch $targetScript $asgs_python $SCENARIODIR 2>>jobErr >jobID
+sbatch richamp-support/$targetScript $asgs_python $SCENARIODIR 2>>jobErr >jobID
 # check to see if the sbatch command succeeded; you can also add a retry
 # but maybe not necessary
 if [[ $? == 0 ]]; then
