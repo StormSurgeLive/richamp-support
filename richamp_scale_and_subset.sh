@@ -1,14 +1,7 @@
 #!/bin/bash
 
 asgs_python=$(which python3) # jgf: I don't think you need this
-# jgf: the next 3 lines are probably not needed,
-# the ASGS will execute the post processing in $SCENARIODIR,
-# i.e., it will be the current working directory when this
-# script is executed
-ADVISDIR=$2
-ENSTORM=$7
-SCENARIODIR=$ADVISDIR/$ENSTORM # ENSTORM should be the same as SCENARIO (used to form SCENARIODIR elsewhere)
-#
+
 logfile=${0}.log
 targetScript="richamp_scale_and_subset.scr"
 jobCheckIntervalSeconds=60
@@ -16,8 +9,8 @@ for ending in submit start finish error ; do
     rm -f $targetScript.$ending # remove .submit .start .finish and .error if they are left over
 done
 #
-echo "[$(date +'%Y-%h-%d-T%H:%M:%S%z')] $0: Submitting $targetScript $asgs_python $SCENARIODIR" > $targetScript.submit | tee --append $logfile
-sbatch richamp-support/$targetScript $asgs_python $SCENARIODIR 2>>jobErr >jobID
+echo "[$(date +'%Y-%h-%d-T%H:%M:%S%z')] $0: Submitting $targetScript $asgs_python" > $targetScript.submit | tee --append $logfile
+sbatch richamp-support/$targetScript $asgs_python 2>>jobErr >jobID
 # check to see if the sbatch command succeeded; you can also add a retry
 # but maybe not necessary
 if [[ $? == 0 ]]; then
