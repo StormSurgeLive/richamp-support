@@ -44,17 +44,17 @@ if [ $tc_forcing == "on" ]; then
 fi
 
 # call python script to trim wind, interpolate to RICHAMP region of interest, and scale based on z0
-output=$SCENARIODIR/RICHAMP_wind
+output=RICHAMP_wind
 highres_roughness=$postprocessdir/NLCD_z0_RICHAMP_Reg_Grid.nc
 wind_roughness=$postprocessdir/gfs-roughness.nc
 if [ $tc_forcing == "off"  ]; then
-   wind=$SCENARIODIR/fort.222
+   wind=fort.222
 fi
 $asgs_python $postprocessdir/scale_and_subset.py -o $output -hr $highres_roughness -wr $wind_roughness -w $wind
 
 # call matlab script to trim depth data to RICHAMP region of interest
-indir=$SCENARIODIR/  # Matlab script expects trailing slashes
-outdir=$SCENARIODIR/
+indir=$PWD/  # Matlab script expects trailing slashes
+outdir=$PWD/
 module load matlab/2020b
 matlab -nodesktop -nodisplay -nosplash -sd $postprocessdir -r "try, subset_fort63_richamp $indir $outdir, catch me, fprintf('%s / %s\n',me.identifier,me.message), end, exit"
 # check to see if matlab script finished successfully
