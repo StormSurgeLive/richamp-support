@@ -2,7 +2,7 @@
 # Contact: Josh Port (joshua_port@uri.edu)
 # Requirements: python3, numpy, netCDF4, scipy
 #
-# Scales OWI ASCII winds based on local land roughness &
+# Scales OWI ASCII or WND winds based on local surface roughness &
 # Outputs a value at every grid point in the roughness file
 #
 class WindGrid:
@@ -109,7 +109,7 @@ class WindData:
 
     def v_velocity(self):
         return self.__v_velocity
-    
+
     
 class Roughness:
     def __init__(self, filename):
@@ -187,6 +187,10 @@ class NetcdfOutput:
                                                                            complevel=2,fill_value=netCDF4.default_fillvals["f4"])
         self.__group_main_var_v10       = self.__group_main.createVariable("V10", "f4", ("time", "latitude", "longitude"), zlib=True,
                                                                            complevel=2,fill_value=netCDF4.default_fillvals["f4"])
+        self.__group_main_var_spd       = self.__group_main.createVariable("spd", "f4", ("time", "latitude", "longitude"), zlib=True,
+                                                                           complevel=2,fill_value=netCDF4.default_fillvals["f4"])
+        self.__group_main_var_dir       = self.__group_main.createVariable("dir", "f4", ("time", "latitude", "longitude"), zlib=True,
+                                                                           complevel=2,fill_value=netCDF4.default_fillvals["f4"])
 
         # Add attributes to variables
         self.__base_date = datetime(1990, 1, 1, 0, 0, 0)
@@ -214,6 +218,12 @@ class NetcdfOutput:
 
         self.__group_main_var_v10.units = "m s-1"
         self.__group_main_var_v10.coordinates = "time lat lon"
+        
+        self.__group_main_var_spd.units = "m s-1"
+        self.__group_main_var_spd.coordinates = "time lat lon"
+        
+        self.__group_main_var_dir.units = "degrees (meteorological convention; direction coming from)"
+        self.__group_main_var_dir.coordinates = "time lat lon"
 
         self.__group_main_var_lat[:] = self.__lat
         self.__group_main_var_lon[:] = self.__lon
@@ -229,6 +239,8 @@ class NetcdfOutput:
         self.__group_main_var_time_unix[idx] = seconds
         self.__group_main_var_u10[idx, :, :] = uvel
         self.__group_main_var_v10[idx, :, :] = vvel
+        self.__group_main_var_spd[idx, :, :] = speed_from_uv(uvel, vvel)
+        self.__group_main_var_dir[idx, :, :] = direction_from_uv(uvel, vvel)
 
     def close(self):
         self.__nc.close()
@@ -292,7 +304,7 @@ class OwiAsciiWind:
         win_file.close()
         return WindGrid(lon, lat)
 
-    def get(self, idx):
+    def get(self):
         from math import ceil, floor
         win_file = open(self.__win_filename, 'r')
         lines = win_file.readlines()
@@ -311,25 +323,207 @@ class OwiAsciiWind:
             line_idx = self.__win_idx_header_row + 1 + floor(i / 8) + ceil((self.__num_lats * self.__num_lons) / 8) 
             lon_idx = i % self.__num_lons
             lat_idx = floor(i / self.__num_lons)
-            vvel[lat_idx][lon_idx] = float(lines[line_idx][low_idx:high_idx])            
+            vvel[lat_idx][lon_idx] = float(lines[line_idx][low_idx:high_idx])  
         win_file.close()           
+        return WindData(self.__date, self.__grid, uvel, vvel)
+  
+    
+class WndWindInp:
+    def __init__(self, wind_inp_filename):
+        self.__wind_inp_filename = wind_inp_filename
+        self.__start_time = self.__get_start_time()
+        self.__time_step = self.__get_time_step()
+        self.__num_times = self.__get_num_times()
+        self.__spatial_res = self.__get_spatial_res()
+        self.__s_lim = self.__get_s_lim()
+        self.__n_lim = self.__get_n_lim()
+        self.__w_lim = self.__get_w_lim()
+        self.__e_lim = self.__get_e_lim()
+        self.__num_lats = self.__get_num_lats()
+        self.__num_lons = self.__get_num_lons()
+    
+    def start_time(self):
+        return self.__start_time
+
+    def time_step(self):
+        return self.__time_step
+    
+    def num_times(self):
+        return self.__num_times
+    
+    def spatial_res(self):
+        return self.__spatial_res  
+
+    def num_lons(self):
+        return self.__num_lons
+
+    def num_lats(self):
+        return self.__num_lats
+    
+    def s_lim(self):
+        return self.__s_lim
+
+    def w_lim(self):
+        return self.__w_lim
+    
+    def __get_start_time(self):
+        from datetime import datetime
+        wind_inp_file = open(self.__wind_inp_filename, 'r')
+        lines = wind_inp_file.readlines()
+        datepart = lines[2].split()
+        start_time = datetime(int(datepart[0]), int(datepart[1]), int(datepart[2]), int(datepart[3]), int(datepart[4]), int(datepart[5]))
+        wind_inp_file.close()
+        return start_time
+    
+    def __get_time_step(self):
+        wind_inp_file = open(self.__wind_inp_filename, 'r')
+        lines = wind_inp_file.readlines()
+        time_step = lines[3]
+        wind_inp_file.close()
+        return float(time_step)
+    
+    def __get_num_times(self):
+        wind_inp_file = open(self.__wind_inp_filename, 'r')
+        lines = wind_inp_file.readlines()
+        num_times = lines[4]
+        wind_inp_file.close()
+        return int(num_times)
+    
+    def __get_spatial_res(self):
+        wind_inp_file = open(self.__wind_inp_filename, 'r')
+        lines = wind_inp_file.readlines()
+        spatial_res = 1 / int(lines[7].strip().replace(".", ""))
+        wind_inp_file.close()
+        return float(spatial_res)
+    
+    def __get_s_lim(self):
+        wind_inp_file = open(self.__wind_inp_filename, 'r')
+        lines = wind_inp_file.readlines()
+        lat_bounds = lines[6].split()
+        s_lim = lat_bounds[0]
+        wind_inp_file.close()
+        return float(s_lim)
+    
+    def __get_n_lim(self):
+        wind_inp_file = open(self.__wind_inp_filename, 'r')
+        lines = wind_inp_file.readlines()
+        lat_bounds = lines[6].split()
+        n_lim = lat_bounds[1]
+        wind_inp_file.close()
+        return float(n_lim)
+
+    def __get_w_lim(self):
+        wind_inp_file = open(self.__wind_inp_filename, 'r')
+        lines = wind_inp_file.readlines()
+        lat_bounds = lines[5].split()
+        w_lim = lat_bounds[0]
+        wind_inp_file.close()
+        return float(w_lim)
+
+    def __get_e_lim(self):
+        wind_inp_file = open(self.__wind_inp_filename, 'r')
+        lines = wind_inp_file.readlines()
+        lat_bounds = lines[5].split()
+        e_lim = lat_bounds[1]
+        wind_inp_file.close()
+        return float(e_lim)
+    
+    def __get_num_lats(self):
+        num_lats = (self.__n_lim - self.__s_lim) / self.__spatial_res + 1
+        return int(num_lats)
+    
+    def __get_num_lons(self):
+        num_lons = (self.__e_lim - self.__w_lim) / self.__spatial_res + 1
+        return int(num_lons)
+
+
+class WndWind:
+    def __init__(self, wnd_filename, wind_inp, idx):
+        self.__wnd_filename = wnd_filename
+        self.__wind_inp = wind_inp
+        self.__idx = idx
+        self.__num_lats = self.__wind_inp.num_lats()
+        self.__num_lons = self.__wind_inp.num_lons()
+        self.__sw_corner_lat = self.__wind_inp.s_lim()
+        self.__sw_corner_lon = self.__wind_inp.w_lim()
+        self.__lat_step = self.__wind_inp.spatial_res()
+        self.__lon_step = self.__wind_inp.spatial_res()
+        self.__idx_start_row = self.__get_idx_start_row()
+        self.__date = self.__get_date()
+        self.__grid = self.__get_grid()
+
+    def date(self):
+        return self.__date
+
+    def grid(self):
+        return self.__grid 
+            
+    def __get_idx_start_row(self):
+        return self.__num_lats * self.__num_lons * self.__idx
+
+    def __get_date(self):
+        from datetime import timedelta
+        return self.__wind_inp.start_time() + timedelta(hours=self.__idx * self.__wind_inp.time_step())
+    
+    def __get_grid(self):
+        from numpy import linspace
+        lat = linspace(self.__sw_corner_lat, self.__sw_corner_lat + (self.__num_lats - 1) * self.__lat_step, self.__num_lats)
+        lon = linspace(self.__sw_corner_lon, self.__sw_corner_lon + (self.__num_lons - 1) * self.__lon_step, self.__num_lons)
+        return WindGrid(lon, lat)
+
+    def get(self):
+        from math import floor
+        wnd_file = open(self.__wnd_filename, 'r')
+        lines = wnd_file.readlines()
+        uvel = [[None for i in range(self.__num_lons)] for j in range(self.__num_lats)]
+        vvel = [[None for i in range(self.__num_lons)] for j in range(self.__num_lats)]
+        for i in range(self.__num_lats * self.__num_lons):
+            line_idx = self.__idx_start_row + i
+            lon_idx = i % self.__num_lons
+            lat_idx = self.__num_lats - floor(i / self.__num_lons) - 1 # WND starts in the NW corner and goes row by row
+            uvel[lat_idx][lon_idx] = float(lines[line_idx][0:9])   
+            vvel[lat_idx][lon_idx] = float(lines[line_idx][10:19])   
+        wnd_file.close()
         return WindData(self.__date, self.__grid, uvel, vvel)
     
     
+def direction_from_uv(u_vel, v_vel):
+    from numpy import arctan, pi, rad2deg, where
+    u_vel[where(u_vel == 0)] = 0.0000000001 # imperceptibly hurt precision to avoid divide by zero errors
+    dir_math = arctan(v_vel / u_vel)
+    dir_math[where(u_vel < 0)] = dir_math[where(u_vel < 0)] + pi; # arctan only returns values from -pi to pi. We need values from 0 to 2*pi.
+    dir_met_radians = ((3 * pi / 2) - dir_math) % (2 * pi) # Meteorological heading
+    return rad2deg(dir_met_radians)
+
+
+def speed_from_uv(u_vel, v_vel):
+    from numpy import sqrt
+    return sqrt(u_vel**2 + v_vel**2)
+
+    
 def roughness_adjust(wind_lon, wind_lat, u_vel, v_vel, u_or_v, z0_wr, z0_hr):
     from scipy import interpolate
-    from numpy import exp, log, sqrt
+    from numpy import exp, log, sqrt, where, zeros
     import water_z0
     # Adjust every z0_wr as if it's water; save to z0_wr_water
     k = 0.40
     z_obs = 10
+    z0_param = 0.0033
+    almost_zero= 0.000001
     wind_mag = sqrt(u_vel**2 + v_vel**2)
-    ust_est = water_z0.retrieve_ust_U10(wind_mag, z_obs)
-    z0_wr_water = z_obs * exp(-(k * wind_mag) / ust_est) 
+    # wind_mag == 0 would cause a divide by zero error below, so we assign them an ever so slightly non-zero value
+    # This value shouldn't matter much; a wind speed of 0 will remain 0 when scaled regardless of z0, and almost_zero ~ 0
+    wind_mag[where(wind_mag == 0)] = almost_zero
+    ust_est = water_z0.retrieve_ust_U10(wind_mag, z_obs) 
+    z0_wr_water = z_obs * exp(-(k * wind_mag) / ust_est)   
     # Interpolate z0_wr to wind resolution just in case their resolution differs
-    z0_wr_interpolant = interpolate.interp2d(z0_wr.lon(), z0_wr.lat(), z0_wr.land_rough(), kind='linear')
-    z0_wr_wr_grid = z0_wr_interpolant(wind_lon, wind_lat)
-    del z0_wr_interpolant
+    if z0_wr != "N/A":
+        z0_wr_interpolant = interpolate.interp2d(z0_wr.lon(), z0_wr.lat(), z0_wr.land_rough(), kind='linear')
+        z0_wr_wr_grid = z0_wr_interpolant(wind_lon, wind_lat)
+        del z0_wr_interpolant
+    # Wnd winds are marine exposure; assume z0 = 0.0033 at every point to be consistent with Deb's logic; see 8/10/22 email from Deb
+    elif z0_wr == "N/A":
+        z0_wr_wr_grid = zeros((len(u_vel), len(u_vel[0]))) + z0_param
     # Scale input wind up to z_ref before interpolating using equations 9 & 10 here: https://dr.lib.iastate.edu/handle/20.500.12876/1131
     z_ref = 80 # Per Isaac the logarithmic profile only applies in the near surface layer, which extends roughly 80m up; to verify with lit review
     b = 1 / (log(10) - log(z0_wr_wr_grid)) # Eq 10
@@ -352,8 +546,9 @@ def roughness_adjust(wind_lon, wind_lat, u_vel, v_vel, u_or_v, z0_wr, z0_hr):
                 z0_hr_hr_grid[i,j] = z0_wr_water_hr_grid[i,j]
     # Scale back down to 10 meters using the local z0 value
     b = 1 / (log(10) - log(z0_hr_hr_grid)) # Eq 10
-    wind_adjust = wind_z_ref_hr_grid / (1 + b * log(z_ref / 10)) # Eq 9; roughness-adjusted wind speed
+    wind_adjust = wind_z_ref_hr_grid / (1 + b * log(z_ref / 10)) # Eq 9; roughness-adjusted wind speed 
     return wind_adjust
+
     
 def main():
     import argparse
@@ -363,42 +558,58 @@ def main():
     # Arguments
     parser.add_argument("-o", metavar="outfile", type=str, help="Name of output file to be created", required=False, default="scaled_wind")
     parser.add_argument("-hr", metavar="highres_roughness", type=str, help="High-resolution land roughness file", required=True)
-    parser.add_argument("-w", metavar="wind", type=str, help="Wind file to be scaled and subsetted; must be in OWI ASCII format", required=True)
-    parser.add_argument("-wr", metavar="wind_roughness", type=str, help="Wind-resolution land roughness file", required=True)
+    parser.add_argument("-w", metavar="wind", type=str, help="Wind file to be scaled and subsetted", required=True)
+    parser.add_argument("-wfmt", metavar="wind_format", type=str, help="Format of the input wind file. Supported values: owi-ascii, wnd", required=True)
+    parser.add_argument("-winp", metavar="wind_inp", type=str, help="Wind_Inp.txt metadata file; required if wfmt is wnd", required=False)
+    parser.add_argument("-wr", metavar="wind_roughness", type=str, help="Wind-resolution land roughness file; required if wfmt is owi-ascii", required=False)
 
     # Read the command line arguments
     args = parser.parse_args()
-
+    
+    wfmt = args.wfmt
+    if wfmt == "owi-ascii":
+        wind = None
+        wind_file = open(args.w, 'r')
+        lines = wind_file.readlines()
+        num_dt = 0
+        for i, line in enumerate(lines):
+            if i == 0:
+                start_date = datetime.strptime(line[55:65], '%Y%m%d%H')
+                end_date = datetime.strptime(line[70:80], '%Y%m%d%H')
+            elif line[65:67] == 'DT' and num_dt == 0:
+                dt_1 = datetime.strptime(line[68:80], '%Y%m%d%H%M')
+                num_dt += 1
+            elif line[65:67] == 'DT' and num_dt == 1:
+                dt_2 = datetime.strptime(line[68:80], '%Y%m%d%H%M')
+                wind_file.close()
+                break
+        time_step = dt_2 - dt_1
+        num_times = int((end_date - start_date) / time_step + 1)
+        z0_wr = Roughness(args.wr)
+    elif wfmt == "wnd":
+        metadata = WndWindInp(args.winp)
+        num_times = metadata.num_times()
+        z0_wr = "N/A"
+    else:
+        print("ERROR: Unsupported wind format. Please try again.")
+        return
+    
+    z0_hr = Roughness(args.hr) 
     wind = None
-    wind_file = open(args.w, 'r')
-    lines = wind_file.readlines()
-    num_dt = 0
-    for i, line in enumerate(lines):
-        if i == 0:
-            start_date = datetime.strptime(line[55:65], '%Y%m%d%H')
-            end_date = datetime.strptime(line[70:80], '%Y%m%d%H')
-        elif line[65:67] == 'DT' and num_dt == 0:
-            dt_1 = datetime.strptime(line[68:80], '%Y%m%d%H%M')
-            num_dt += 1
-        elif line[65:67] == 'DT' and num_dt == 1:
-            dt_2 = datetime.strptime(line[68:80], '%Y%m%d%H%M')
-            wind_file.close()
-            break
-    time_step = dt_2 - dt_1
-    num_times = int((end_date - start_date) / time_step + 1)
-
-    z0_hr = Roughness(args.hr)
-    z0_wr = Roughness(args.wr)
-
+    
     time_index = 0
     while time_index < num_times:
-        owi_ascii = OwiAsciiWind(args.w, time_index)
         print("INFO: Processing time slice {:d} of {:d}".format(time_index + 1, num_times), flush=True)
-        wind_data = owi_ascii.get(time_index)
-        if not wind:
-            wind = NetcdfOutput(args.o, z0_hr.lon(), z0_hr.lat())
+        if wfmt == "owi-ascii":
+            owi_ascii = OwiAsciiWind(args.w, time_index)
+            wind_data = owi_ascii.get()
+        elif wfmt == "wnd":
+            wnd = WndWind(args.w, metadata, time_index)
+            wind_data = wnd.get()
         uvel_scaled = roughness_adjust(wind_data.wind_grid().lon1d(), wind_data.wind_grid().lat1d(), wind_data.u_velocity(), wind_data.v_velocity(), 'u', z0_wr, z0_hr)
         vvel_scaled = roughness_adjust(wind_data.wind_grid().lon1d(), wind_data.wind_grid().lat1d(), wind_data.u_velocity(), wind_data.v_velocity(), 'v', z0_wr, z0_hr)
+        if not wind:
+            wind = NetcdfOutput(args.o, z0_hr.lon(), z0_hr.lat())
         wind.append(time_index, wind_data.date(), uvel_scaled, vvel_scaled)
         time_index += 1  
     

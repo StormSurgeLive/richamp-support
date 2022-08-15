@@ -28,19 +28,30 @@ tc_forcing=${properties['forcing.tropicalcyclone']}
 
 postprocessdir=$SCRIPTDIR/output/richamp-support
 
-# if TROPICALCYCLONE=on, call metget to get winds
+# if TROPICALCYCLONE=on, call URI parametric model to get winds; fall back to MetGet if necessary
 if [ $tc_forcing == "on" ]; then
-   # get date range from run.properties
-   t_start_raw=${properties['RunStartTime']}
-   t_end_raw=${properties['RunEndTime']}
-   # convert from yyyymmddHH to yyyy-mm-dd HH:MM for metget call
-   t_start=${t_start_raw:0:4}-${t_start_raw:4:2}-${t_start_raw:6:2}" "${t_start_raw:8:2}:${t_start_raw:10:2}00
-   t_end=${t_end_raw:0:4}-${t_end_raw:4:2}-${t_end_raw:6:2}" "${t_end_raw:8:2}:${t_end_raw:10:2}00
-   wind_filename=gfs_forecast
-   # call metget
-   $asgs_python $postprocessdir/get_metget_data.py --domain gfs 0.25 -72 41 -71 43 --start "$t_start" --end "$t_end" --timestep 3600 --output $wind_filename --multiple_forecasts --format owi-ascii --variable wind_pressure
-   # define wind
-   wind=$wind_filename\_00.wnd
+   # run URI parametric model
+   matlab -nodesktop -nodisplay -nosplash -sd $postprocessdir -r "try, ASGS_fort22_to_PWM_inputs, catch me, fprintf('%s / %s\n',me.identifier,me.message), end, exit"
+   $postprocessdir/windgfdl
+   # fall back to MetGet if necessary
+   wind=ofcl.wnd
+   wind_inp=Wind_Inp.txt
+   if [ ! -r "$wind" ] || [ ! -r "$wind_inp" ]; then
+      # get date range from run.properties
+      t_start_raw=${properties['RunStartTime']}
+      t_end_raw=${properties['RunEndTime']}
+      # convert from yyyymmddHH to yyyy-mm-dd HH:MM for metget call
+      t_start=${t_start_raw:0:4}-${t_start_raw:4:2}-${t_start_raw:6:2}" "${t_start_raw:8:2}:${t_start_raw:10:2}00
+      t_end=${t_end_raw:0:4}-${t_end_raw:4:2}-${t_end_raw:6:2}" "${t_end_raw:8:2}:${t_end_raw:10:2}00
+      wind_filename=gfs_forecast
+      # call metget
+      $asgs_python $postprocessdir/get_metget_data.py --domain gfs 0.25 -72 41 -71 43 --start "$t_start" --end "$t_end" --timestep 3600 --output $wind_filename --multiple_forecasts --format owi-ascii --variable wind_pressure
+      # define wind
+      wind=$wind_filename\_00.wnd
+      wind_format="owi-ascii"
+   else
+      wind_format="wnd"
+   fi
 fi
 
 # call python script to trim wind, interpolate to RICHAMP region of interest, and scale based on z0
@@ -49,8 +60,13 @@ highres_roughness=$postprocessdir/NLCD_z0_RICHAMP_Reg_Grid.nc
 wind_roughness=$postprocessdir/gfs-roughness.nc
 if [ $tc_forcing == "off"  ]; then
    wind=fort.222
+   wind_format="owi-ascii"
 fi
-$asgs_python $postprocessdir/scale_and_subset.py -o $output -hr $highres_roughness -wr $wind_roughness -w $wind
+if [ $wind_format == "owi-ascii" ]; then
+   $asgs_python $postprocessdir/scale_and_subset.py -o $output -hr $highres_roughness -w $wind -wfmt $wind_format -wr $wind_roughness
+elif [ $wind_format == "wnd" ]; then
+   $asgs_python $postprocessdir/scale_and_subset.py -o $output -hr $highres_roughness -w $wind -wfmt $wind_format -winp $wind_inp
+fi
 
 # call matlab script to trim depth data to RICHAMP region of interest
 indir=$PWD/  # Matlab script expects trailing slashes
