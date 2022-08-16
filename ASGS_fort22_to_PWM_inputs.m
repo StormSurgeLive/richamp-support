@@ -63,30 +63,30 @@ for i=1:length(ia)
     Ad2(i,3)=str2double(cell2mat(A(r,10)));
     Ad2(i,4)=(1014);
     Ad2(i,5)=(1014);    
-    Ad2(i,6)=str2double(cell2mat(A(r,9)))*0.514444;       %max wind speed in m/s
+    Ad2(i,6)=round(str2double(cell2mat(A(r,9)))*0.514444,0);       %max wind speed in m/s
     
     temp=str2double(cell2mat(A(r,19)));
     if(temp>0)
-       Ad2(i,7)=temp*1.852; % radius of last closed isobar - converted to km
+       Ad2(i,7)=round(temp*1.852,0); % radius of last closed isobar - converted to km
     else
        Ad2(i,7)=99; 
     end
     
         temp=str2double(cell2mat(A(r,20)));
     if(temp>0)
-      Rmwo(i)=temp*1.852; % radius of maximum winds
+      Rmwo(i)=round(temp*1.852,0); % radius of maximum winds
     else
       Rmwo(i)=-99; 
     end
     
-        Ad2(i,8)=str2double(cell2mat(A(r,14)))*1.852;    % radiii in km (original file is nm)
-        Ad2(i,9)=str2double(cell2mat(A(r,15)))*1.852;  
-        Ad2(i,10)=str2double(cell2mat(A(r,16)))*1.852;  
-        Ad2(i,11)=str2double(cell2mat(A(r,17)))*1.852;  
+        Ad2(i,8)=round(str2double(cell2mat(A(r,14)))*1.852,0);    % radiii in km (original file is nm)
+        Ad2(i,9)=round(str2double(cell2mat(A(r,15)))*1.852,0);  
+        Ad2(i,10)=round(str2double(cell2mat(A(r,16)))*1.852,0);  
+        Ad2(i,11)=round(str2double(cell2mat(A(r,17)))*1.852,0);  
                         
     ind=find(B2(:,6)==B2(r,6));
     if(length(ind)>1)
-        Ad2(i,12)=str2double(cell2mat(A(r+1,14)))*1.852;  Ad2(i,13)=str2double(cell2mat(A(r+1,15)))*1.852;  Ad2(i,14)=str2double(cell2mat(A(r+1,16)))*1.852;  Ad2(i,15)=str2double(cell2mat(A(r+1,17)))*1.852;
+        Ad2(i,12)=round(str2double(cell2mat(A(r+1,14)))*1.852,0);  Ad2(i,13)=round(str2double(cell2mat(A(r+1,15)))*1.852,0);  Ad2(i,14)=round(str2double(cell2mat(A(r+1,16)))*1.852,0);  Ad2(i,15)=round(str2double(cell2mat(A(r+1,17)))*1.852,0);
     else
         Asd2(i,1)=(0);  Ad2(i,13)=(0);  Ad2(i,14)=(0);  Ad2(i,15)=(0);  
     end
