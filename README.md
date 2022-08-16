@@ -23,5 +23,5 @@ NOTE: You should already have set up an ASGS instance before you go through this
         2. POSTPROCESS=( richamp_scale_and_subset.sh createOPeNDAPFileList.sh $OPENDAPPOST )
         3. postAdditionalFiles=( RICHAMP_fort63.nc RICHAMP_wind.nc )
     8. You are now set up! Just run ASGS as you would normally.
-        1. If you need to troubleshoot, refer to uri_post.err and uri_post.out, which will be generated in the ASGS scenario directory, and richamp_scale_and_subset.sh.log, which will be generated in your ASGS output folder (where you moved your richamp_scale_and_subset.* files to earlier).
+        1. If you need to troubleshoot, refer to uri_post.err and uri_post.out, which will be generated in the ASGS scenario directory, and richamp_scale_and_subset.sh.log, which will be generated in the richamp-support folder.
         2. If you get stuck or find a bug, contact Josh Port (joshua_port@uri.edu). If Josh is unavailable, try reaching out to Dave Ullman (dullman@uri.edu).
