@@ -35,7 +35,7 @@ if [ $tc_forcing == "on" ]; then
    matlab -nodesktop -nodisplay -nosplash -sd $postprocessdir -r "try, ASGS_fort22_to_PWM_inputs, catch me, fprintf('%s / %s\n',me.identifier,me.message), end, exit"
    $postprocessdir/windgfdl
    # fall back to MetGet if necessary
-   wind=ofcl.wnd
+   wind=richamp.wnd
    wind_inp=Wind_Inp.txt
    if [ ! -r "$wind" ] || [ ! -r "$wind_inp" ]; then
       # get date range from run.properties
