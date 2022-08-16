@@ -31,6 +31,7 @@ postprocessdir=$SCRIPTDIR/output/richamp-support
 # if TROPICALCYCLONE=on, call URI parametric model to get winds; fall back to MetGet if necessary
 if [ $tc_forcing == "on" ]; then
    # run URI parametric model
+   module load matlab/2020b
    matlab -nodesktop -nodisplay -nosplash -sd $postprocessdir -r "try, ASGS_fort22_to_PWM_inputs, catch me, fprintf('%s / %s\n',me.identifier,me.message), end, exit"
    $postprocessdir/windgfdl
    # fall back to MetGet if necessary
