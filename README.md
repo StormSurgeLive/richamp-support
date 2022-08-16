@@ -12,16 +12,19 @@ NOTE: You should already have set up an ASGS instance before you go through this
     4. Copy the following two NetCDFs from /home/joshua_p/postprocess to your richamp-support directory:
         1. gfs-roughness.nc
         2. NLCD_z0_RICHAMP_Reg_Grid.nc
-    5. From within ASGSH run the following:
+    5. Copy the following two files from /projects/ees/dhs-crc/dcrowley/c_PWM/b_RIC_TEST/ to your richamp-support directory:
+        1. diag_parm.nml
+        2. windgfdl
+    6. From within ASGSH run the following:
         1. “pip3 install requests scipy”
         2. “export METGET_API_KEY=[URI MetGet API key from step 1]”
         3. “export METGET_ENDPOINT=https://api.metget.zachcobell.com”
-    6. Open your ASGS config file
+    7. Open your ASGS config file
         1. If you don’t know what your ASGS config file is, run “echo $ASGS_CONFIG” via ASGSH.
-    7. Add richamp_scale_and_subset.sh to the front of the POSTPROCESS list. Also add RICHAMP_fort63.nc and RICHAMP_wind.nc to the postAdditionalFiles list. createOPeNDAPFileList.sh and $OPENDAPPOST should already be in the POSTPROCESS list, but if not, add those after richamp_scale_and_subset.sh and add another line above that to set OPENDAPPOST=opendap_post2.sh. Save and close the file. The final configuration might look like this:
+    8. Add richamp_scale_and_subset.sh to the front of the POSTPROCESS list. Also add RICHAMP_fort63.nc and RICHAMP_wind.nc to the postAdditionalFiles list. createOPeNDAPFileList.sh and $OPENDAPPOST should already be in the POSTPROCESS list, but if not, add those after richamp_scale_and_subset.sh and add another line above that to set OPENDAPPOST=opendap_post2.sh. Save and close the file. The final configuration might look like this:
         1. OPENDAPPOST=opendap_post2.sh
         2. POSTPROCESS=( richamp_scale_and_subset.sh createOPeNDAPFileList.sh $OPENDAPPOST )
         3. postAdditionalFiles=( RICHAMP_fort63.nc RICHAMP_wind.nc )
-    8. You are now set up! Just run ASGS as you would normally.
+    9. You are now set up! Just run ASGS as you would normally.
         1. If you need to troubleshoot, refer to uri_post.err and uri_post.out, which will be generated in the ASGS scenario directory, and richamp_scale_and_subset.sh.log, which will be generated in the richamp-support folder.
         2. If you get stuck or find a bug, contact Josh Port (joshua_port@uri.edu). If Josh is unavailable, try reaching out to Dave Ullman (dullman@uri.edu).
