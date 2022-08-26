@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Contact: Josh Port (joshua_port@uri.edu)
-# Requirements: python3, numpy, netCDF4, scipy
+# Requirements: python3, numpy, netCDF4, pyproj, scipy
 #
 # Scales OWI ASCII or WND winds based on local surface roughness &
 # Outputs a value at every grid point in the roughness file
@@ -175,10 +175,10 @@ class NetcdfOutput:
         self.__group_main_dim_latitude = self.__group_main.createDimension("latitude", len(self.__lat))
 
         # Create variables (with compression)
-        self.__group_main_var_time      = self.__group_main.createVariable("time", "i4", "time", zlib=True, complevel=2,
-                                                                           fill_value=netCDF4.default_fillvals["i4"])
-        self.__group_main_var_time_unix = self.__group_main.createVariable("time_unix", "i8", "time", zlib=True, complevel=2,
-                                                                           fill_value=netCDF4.default_fillvals["i8"])
+        self.__group_main_var_time      = self.__group_main.createVariable("time", "f4", "time", zlib=True, complevel=2,
+                                                                           fill_value=netCDF4.default_fillvals["f4"])
+        self.__group_main_var_time_unix = self.__group_main.createVariable("time_unix", "f8", "time", zlib=True, complevel=2,
+                                                                           fill_value=netCDF4.default_fillvals["f8"]) # int64 isn't supported in DAP2 
         self.__group_main_var_lon       = self.__group_main.createVariable("lon", "f8", "longitude", zlib=True, complevel=2,
                                                                            fill_value=netCDF4.default_fillvals["f8"])
         self.__group_main_var_lat       = self.__group_main.createVariable("lat", "f8", "latitude", zlib=True, complevel=2,
@@ -248,7 +248,6 @@ class NetcdfOutput:
 
 class OwiAsciiWind:
     # NOTE: This class assumes the same number of grid points in each time slice.
-    # The conversion will fail if this isn't the case.
     def __init__(self, win_filename, idx):
         self.__win_filename = win_filename
         self.__idx = idx
@@ -501,41 +500,53 @@ def speed_from_uv(u_vel, v_vel):
     return sqrt(u_vel**2 + v_vel**2)
 
     
-def roughness_adjust(wind_lon, wind_lat, u_vel, v_vel, u_or_v, z0_wr, z0_hr):
+def roughness_adjust(back_wind, param_wind, wfmt, z0_wr, z0_hr):
     from scipy import interpolate
     from numpy import exp, log, sqrt, where, zeros
     import water_z0
-    # Adjust every z0_wr as if it's water; save to z0_wr_water
     k = 0.40
     z_obs = 10
     z0_param = 0.0033
-    almost_zero= 0.000001
-    wind_mag = sqrt(u_vel**2 + v_vel**2)
-    # wind_mag == 0 would cause a divide by zero error below, so we assign them an ever so slightly non-zero value
-    # This value shouldn't matter much; a wind speed of 0 will remain 0 when scaled regardless of z0, and almost_zero ~ 0
-    wind_mag[where(wind_mag == 0)] = almost_zero
+    almost_zero = 0.000001
+    # Scale input wind up to z_ref using equations 9 & 10 here: https://dr.lib.iastate.edu/handle/20.500.12876/1131
+    z_ref = 80 # Per Isaac the logarithmic profile only applies in the near surface layer, which extends roughly 80m up; to verify with lit review
+    if (wfmt == "owi-ascii") | (wfmt == "blend"):
+        # Interpolate wind to z0_wr resolution just in case their resolution differs
+        z0_wr_interpolant = interpolate.interp2d(z0_wr.lon(), z0_wr.lat(), z0_wr.land_rough(), kind='linear')
+        z0_wr_wr_grid_back = z0_wr_interpolant(back_wind.wind_grid().lon1d(), back_wind.wind_grid().lat1d())
+        del z0_wr_interpolant
+        # Scale to z_ref
+        b = 1 / (log(10) - log(z0_wr_wr_grid_back)) # Eq 10
+        u_back_z_ref = back_wind.u_velocity() * (1 + b * log(z_ref / 10)) # Eq 9
+        v_back_z_ref = back_wind.v_velocity() * (1 + b * log(z_ref / 10)) # Eq 9
+    if (wfmt == "wnd") | (wfmt == "blend"):
+        # Wnd winds are marine exposure; assume z0 = 0.0033 at every point to be consistent with Deb's logic; see 8/10/22 email from Deb
+        z0_wr_wr_grid_param = zeros((len(param_wind.u_velocity()), len(param_wind.u_velocity()[0]))) + z0_param
+        # Scale to z_ref
+        b = 1 / (log(10) - log(z0_wr_wr_grid_param)) # Eq 10
+        u_param_z_ref = param_wind.u_velocity() * (1 + b * log(z_ref / 10)) # Eq 9
+        v_param_z_ref = param_wind.v_velocity() * (1 + b * log(z_ref / 10)) # Eq 9
+    # Define wind; including blending if necessary
+    if wfmt == "owi-ascii":
+        wind_z_ref = WindData(back_wind.date(), back_wind.wind_grid(), u_back_z_ref, v_back_z_ref)
+    elif wfmt == "wnd":
+        wind_z_ref = WindData(param_wind.date(), param_wind.wind_grid(), u_param_z_ref, v_param_z_ref)
+    elif wfmt == "blend":
+        back_wind_z_ref = WindData(back_wind.date(), back_wind.wind_grid(), u_back_z_ref, v_back_z_ref)        
+        param_wind_z_ref = WindData(param_wind.date(), param_wind.wind_grid(), u_param_z_ref, v_param_z_ref)
+        wind_z_ref = blend(back_wind_z_ref, param_wind_z_ref)    
+    # Adjust every z0_wr as if it's water; save to z0_wr_water
+    wind_mag = sqrt(wind_z_ref.u_velocity()**2 + wind_z_ref.v_velocity()**2)
+    wind_mag[where(wind_mag == 0)] = almost_zero # wind_mag == 0 would cause a divide by zero error below
     ust_est = water_z0.retrieve_ust_U10(wind_mag, z_obs) 
     z0_wr_water = z_obs * exp(-(k * wind_mag) / ust_est)   
-    # Interpolate z0_wr to wind resolution just in case their resolution differs
-    if z0_wr != "N/A":
-        z0_wr_interpolant = interpolate.interp2d(z0_wr.lon(), z0_wr.lat(), z0_wr.land_rough(), kind='linear')
-        z0_wr_wr_grid = z0_wr_interpolant(wind_lon, wind_lat)
-        del z0_wr_interpolant
-    # Wnd winds are marine exposure; assume z0 = 0.0033 at every point to be consistent with Deb's logic; see 8/10/22 email from Deb
-    elif z0_wr == "N/A":
-        z0_wr_wr_grid = zeros((len(u_vel), len(u_vel[0]))) + z0_param
-    # Scale input wind up to z_ref before interpolating using equations 9 & 10 here: https://dr.lib.iastate.edu/handle/20.500.12876/1131
-    z_ref = 80 # Per Isaac the logarithmic profile only applies in the near surface layer, which extends roughly 80m up; to verify with lit review
-    b = 1 / (log(10) - log(z0_wr_wr_grid)) # Eq 10
-    if u_or_v == 'u':
-        wind_z_ref = u_vel * (1 + b * log(z_ref / 10)) # Eq 9
-    elif u_or_v == 'v':
-        wind_z_ref = v_vel * (1 + b * log(z_ref / 10)) # Eq 9
     # Interpolate wind_z_ref and z0_wr_water to z0_hr resolution
-    wind_interpolant = interpolate.interp2d(wind_lon, wind_lat, wind_z_ref, kind='linear')
-    wind_z_ref_hr_grid = wind_interpolant(z0_hr.lon(), z0_hr.lat())
-    del wind_interpolant
-    z0_water_interpolant = interpolate.interp2d(wind_lon, wind_lat, z0_wr_water, kind='linear')
+    u_interpolant = interpolate.interp2d(wind_z_ref.wind_grid().lon1d(), wind_z_ref.wind_grid().lat1d(), wind_z_ref.u_velocity(), kind='linear')
+    u_z_ref_hr_grid = u_interpolant(z0_hr.lon(), z0_hr.lat())
+    v_interpolant = interpolate.interp2d(wind_z_ref.wind_grid().lon1d(), wind_z_ref.wind_grid().lat1d(), wind_z_ref.v_velocity(), kind='linear')
+    v_z_ref_hr_grid = v_interpolant(z0_hr.lon(), z0_hr.lat())
+    del u_interpolant, v_interpolant
+    z0_water_interpolant = interpolate.interp2d(wind_z_ref.wind_grid().lon1d(), wind_z_ref.wind_grid().lat1d(), z0_wr_water, kind='linear')
     z0_wr_water_hr_grid = z0_water_interpolant(z0_hr.lon(), z0_hr.lat())
     del z0_water_interpolant
     # Re-assign roughness values over sea for z0_hr
@@ -546,22 +557,80 @@ def roughness_adjust(wind_lon, wind_lat, u_vel, v_vel, u_or_v, z0_wr, z0_hr):
                 z0_hr_hr_grid[i,j] = z0_wr_water_hr_grid[i,j]
     # Scale back down to 10 meters using the local z0 value
     b = 1 / (log(10) - log(z0_hr_hr_grid)) # Eq 10
-    wind_adjust = wind_z_ref_hr_grid / (1 + b * log(z_ref / 10)) # Eq 9; roughness-adjusted wind speed 
-    return wind_adjust
+    u_adjust = u_z_ref_hr_grid / (1 + b * log(z_ref / 10)) # Eq 9; roughness-adjusted wind speed 
+    v_adjust = v_z_ref_hr_grid / (1 + b * log(z_ref / 10)) # Eq 9; roughness-adjusted wind speed 
+    return WindData(wind_z_ref.date(), WindGrid(z0_hr.lon(), z0_hr.lat()), u_adjust, v_adjust)
 
+
+def blend(back_wind, param_wind):
+    from numpy import floor, sqrt, zeros 
+    from pandas import read_csv
+    from pyproj import Geod
+    from scipy import interpolate
+    # Interpolate back_wind to the param_wind spatial resolution (temporal is assumed to be the same)
+    u_interpolant = interpolate.interp2d(back_wind.wind_grid().lon1d(), back_wind.wind_grid().lat1d(), back_wind.u_velocity(), kind='linear')
+    back_wind_u_interp = u_interpolant(param_wind.wind_grid().lon1d(), param_wind.wind_grid().lat1d())
+    v_interpolant = interpolate.interp2d(back_wind.wind_grid().lon1d(), back_wind.wind_grid().lat1d(), back_wind.v_velocity(), kind='linear')
+    back_wind_v_interp = v_interpolant(param_wind.wind_grid().lon1d(), param_wind.wind_grid().lat1d())
+    # Determine storm center location at param_wind.date()
+    fort22 = read_csv('fort.22', header=None)
+    fort22_rows = len(fort22)
+    lat_ctr = zeros((fort22_rows,1))
+    lon_ctr = zeros((fort22_rows,1))
+    time_ctr = zeros((fort22_rows,1))
+    for i in range(0,fort22_rows):
+        lat_ctr[i] = float(fort22.iloc[i,6].replace('N',''))/10 # Assumes northern hemisphere
+        lon_ctr[i] = -float(fort22.iloc[i,7].replace('W',''))/10 # Assumes western hemisphere
+        time_ctr[i] = int(fort22.iloc[i,2])
+    int_param_wind_date = int(param_wind.date().strftime('%Y%m%d%H'))
+    time_ctr = time_ctr.flatten()
+    lon_ctr_interpolant = interpolate.interp1d(time_ctr, lon_ctr.flatten(), kind='linear')
+    lon_ctr_interp = lon_ctr_interpolant(int_param_wind_date)
+    lat_ctr_interpolant = interpolate.interp1d(time_ctr, lat_ctr.flatten(), kind='linear')
+    lat_ctr_interp = lat_ctr_interpolant(int_param_wind_date)
+    # Calculate RMW; fort.22 has a RMW column, but it's often set to 0
+    mag_param = sqrt(param_wind.u_velocity()**2 + param_wind.v_velocity()**2)
+    max_index = mag_param.argmax() # Will be the index of the flattened array
+    max_wind = mag_param.max()
+    num_lons = len(mag_param)
+    lon_max_index = max_index % num_lons
+    lat_max_index = int(floor(max_index / num_lons))
+    wgs84_geod = Geod(ellps='WGS84') 
+    _,_,rmw = wgs84_geod.inv(lon_ctr_interp, lat_ctr_interp, param_wind.wind_grid().lon().item((lon_max_index,lat_max_index)), param_wind.wind_grid().lat().item((lon_max_index,lat_max_index)))
+    # Blend outside RMW region and within low and high limits for wind speed, and apply parametric wind to vortex center
+    low_pct_of_max = .4
+    high_pct_of_max = .6
+    low_lim = min(low_pct_of_max * max_wind, 15.5)
+    high_lim = min(high_pct_of_max * max_wind, 20.5)
+    lon_ctr_interp_grid = zeros((param_wind.wind_grid().lon1d().size, param_wind.wind_grid().lat1d().size)) + lon_ctr_interp
+    lat_ctr_interp_grid = zeros((param_wind.wind_grid().lon1d().size, param_wind.wind_grid().lat1d().size)) + lat_ctr_interp
+    _,_,dist_from_ctr = wgs84_geod.inv(lon_ctr_interp_grid, lat_ctr_interp_grid, param_wind.wind_grid().lon(), param_wind.wind_grid().lat())
+    rmw_mask = dist_from_ctr <= rmw # Make sure we don't blend within the RMW
+    blend_mask = (low_lim < mag_param) & (mag_param < high_lim) & ~rmw_mask 
+    back_mask = (mag_param <= low_lim) & ~rmw_mask
+    u_blend = param_wind.u_velocity()
+    v_blend = param_wind.v_velocity()
+    alpha = (mag_param - low_lim) / (high_lim - low_lim)
+    u_blend[blend_mask] = (alpha[blend_mask] * param_wind.u_velocity()[blend_mask]) + ((1 - alpha[blend_mask]) * back_wind_u_interp[blend_mask])
+    v_blend[blend_mask] = (alpha[blend_mask] * param_wind.v_velocity()[blend_mask]) + ((1 - alpha[blend_mask]) * back_wind_v_interp[blend_mask])
+    u_blend[back_mask] = back_wind_u_interp[back_mask]
+    v_blend[back_mask] = back_wind_v_interp[back_mask]
+    return WindData(param_wind.date(), param_wind.wind_grid(), u_blend, v_blend)
+    
     
 def main():
     import argparse
     from datetime import datetime
-    parser = argparse.ArgumentParser(description="Convert HBL output to alternate formats")
+    parser = argparse.ArgumentParser(description="Scale and subset input wind data based on high-resolution land roughness")
 
     # Arguments
     parser.add_argument("-o", metavar="outfile", type=str, help="Name of output file to be created", required=False, default="scaled_wind")
     parser.add_argument("-hr", metavar="highres_roughness", type=str, help="High-resolution land roughness file", required=True)
     parser.add_argument("-w", metavar="wind", type=str, help="Wind file to be scaled and subsetted", required=True)
-    parser.add_argument("-wfmt", metavar="wind_format", type=str, help="Format of the input wind file. Supported values: owi-ascii, wnd", required=True)
-    parser.add_argument("-winp", metavar="wind_inp", type=str, help="Wind_Inp.txt metadata file; required if wfmt is wnd", required=False)
-    parser.add_argument("-wr", metavar="wind_roughness", type=str, help="Wind-resolution land roughness file; required if wfmt is owi-ascii", required=False)
+    parser.add_argument("-wback", metavar="wind_background", type=str, help="Background wind to be blended with the wind file; required if wfmt is blend", required=False)
+    parser.add_argument("-wfmt", metavar="wind_format", type=str, help="Format of the input wind file. Supported values: owi-ascii, wnd, blend", required=True)
+    parser.add_argument("-winp", metavar="wind_inp", type=str, help="Wind_Inp.txt metadata file; required if wfmt is wnd or blend", required=False)
+    parser.add_argument("-wr", metavar="wind_roughness", type=str, help="Wind-resolution land roughness file; required if wfmt is owi-ascii or blend", required=False)
 
     # Read the command line arguments
     args = parser.parse_args()
@@ -589,7 +658,10 @@ def main():
     elif wfmt == "wnd":
         metadata = WndWindInp(args.winp)
         num_times = metadata.num_times()
-        z0_wr = "N/A"
+    elif wfmt == "blend":
+        metadata = WndWindInp(args.winp)
+        num_times = metadata.num_times()
+        z0_wr = Roughness(args.wr)
     else:
         print("ERROR: Unsupported wind format. Please try again.")
         return
@@ -602,15 +674,22 @@ def main():
         print("INFO: Processing time slice {:d} of {:d}".format(time_index + 1, num_times), flush=True)
         if wfmt == "owi-ascii":
             owi_ascii = OwiAsciiWind(args.w, time_index)
-            wind_data = owi_ascii.get()
+            back_wind = owi_ascii.get()
+            wind_scaled = roughness_adjust(back_wind, None, wfmt, z0_wr, z0_hr)
         elif wfmt == "wnd":
             wnd = WndWind(args.w, metadata, time_index)
-            wind_data = wnd.get()
-        uvel_scaled = roughness_adjust(wind_data.wind_grid().lon1d(), wind_data.wind_grid().lat1d(), wind_data.u_velocity(), wind_data.v_velocity(), 'u', z0_wr, z0_hr)
-        vvel_scaled = roughness_adjust(wind_data.wind_grid().lon1d(), wind_data.wind_grid().lat1d(), wind_data.u_velocity(), wind_data.v_velocity(), 'v', z0_wr, z0_hr)
+            param_wind = wnd.get()
+            wind_scaled = roughness_adjust(None, param_wind, wfmt, None, z0_hr)
+        elif wfmt == "blend": 
+            # Assumes the owi_ascii and wnd files have the same temporal resolution
+            owi_ascii = OwiAsciiWind(args.wback, time_index)
+            wnd = WndWind(args.w, metadata, time_index)
+            back_wind = owi_ascii.get()
+            param_wind = wnd.get()
+            wind_scaled = roughness_adjust(back_wind, param_wind, wfmt, z0_wr, z0_hr)
         if not wind:
             wind = NetcdfOutput(args.o, z0_hr.lon(), z0_hr.lat())
-        wind.append(time_index, wind_data.date(), uvel_scaled, vvel_scaled)
+        wind.append(time_index, wind_scaled.date(), wind_scaled.u_velocity(), wind_scaled.v_velocity())
         time_index += 1  
     
     wind.close()

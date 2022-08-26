@@ -28,30 +28,32 @@ tc_forcing=${properties['forcing.tropicalcyclone']}
 
 postprocessdir=$SCRIPTDIR/output/richamp-support
 
-# if TROPICALCYCLONE=on, call URI parametric model to get winds; fall back to MetGet if necessary
+# if TROPICALCYCLONE=on, call URI parametric model and MetGet to get winds; attempt to blend them, but fall back to one or the other if necessary
 if [ $tc_forcing == "on" ]; then
    # run URI parametric model
    module load matlab/2020b
    matlab -nodesktop -nodisplay -nosplash -sd $postprocessdir -r "try, ASGS_fort22_to_PWM_inputs, catch me, fprintf('%s / %s\n',me.identifier,me.message), end, exit"
    $postprocessdir/windgfdl
-   # fall back to MetGet if necessary
-   wind=richamp.wnd
+   # pull in metadata for MetGet call
+   wind_param=richamp.wnd
    wind_inp=Wind_Inp.txt
-   if [ ! -r "$wind" ] || [ ! -r "$wind_inp" ]; then
-      # get date range from run.properties
-      t_start_raw=${properties['RunStartTime']}
-      t_end_raw=${properties['RunEndTime']}
-      # convert from yyyymmddHH to yyyy-mm-dd HH:MM for metget call
-      t_start=${t_start_raw:0:4}-${t_start_raw:4:2}-${t_start_raw:6:2}" "${t_start_raw:8:2}:${t_start_raw:10:2}00
-      t_end=${t_end_raw:0:4}-${t_end_raw:4:2}-${t_end_raw:6:2}" "${t_end_raw:8:2}:${t_end_raw:10:2}00
-      wind_filename=gfs_forecast
-      # call metget
-      $asgs_python $postprocessdir/get_metget_data.py --domain gfs 0.25 -72 41 -71 43 --start "$t_start" --end "$t_end" --timestep 3600 --output $wind_filename --multiple_forecasts --format owi-ascii --variable wind_pressure
-      # define wind
-      wind=$wind_filename\_00.wnd
+   ## get date range from run.properties
+   t_start_raw=${properties['RunStartTime']}
+   t_end_raw=${properties['RunEndTime']}
+   ## convert from yyyymmddHH to yyyy-mm-dd HH:MM
+   t_start=${t_start_raw:0:4}-${t_start_raw:4:2}-${t_start_raw:6:2}" "${t_start_raw:8:2}:${t_start_raw:10:2}00
+   t_end=${t_end_raw:0:4}-${t_end_raw:4:2}-${t_end_raw:6:2}" "${t_end_raw:8:2}:${t_end_raw:10:2}00
+   wind_back_filename=gfs_forecast
+   # call MetGet
+   $asgs_python $postprocessdir/get_metget_data.py --domain gfs 0.25 -72 41 -71 43 --start "$t_start" --end "$t_end" --timestep 3600 --output $wind_back_filename --multiple_forecasts --format owi-ascii --variable wind_pressure
+   wind_back=$wind_back_filename\_00.wnd
+   # determine wind format based on available files
+   if [[ ! -r "$wind_param"  || ! -r "$wind_inp" ]] && [[ -r "$wind_back" ]]; then
       wind_format="owi-ascii"
-   else
+   elif [[ -r "$wind_param" && -r "$wind_inp" ]] && [[ ! -r "$wind_back" ]]; then
       wind_format="wnd"
+   elif [[ -r "$wind_param" && -r "$wind_inp" ]] && [[ -r "$wind_back" ]]; then
+      wind_format="blend"
    fi
 fi
 
@@ -60,13 +62,15 @@ output=RICHAMP_wind
 highres_roughness=$postprocessdir/NLCD_z0_RICHAMP_Reg_Grid.nc
 wind_roughness=$postprocessdir/gfs-roughness.nc
 if [ $tc_forcing == "off"  ]; then
-   wind=fort.222
+   wind_back=fort.222
    wind_format="owi-ascii"
 fi
 if [ $wind_format == "owi-ascii" ]; then
-   $asgs_python $postprocessdir/scale_and_subset.py -o $output -hr $highres_roughness -w $wind -wfmt $wind_format -wr $wind_roughness
+   $asgs_python $postprocessdir/scale_and_subset.py -o $output -hr $highres_roughness -w $wind_back -wfmt $wind_format -wr $wind_roughness
 elif [ $wind_format == "wnd" ]; then
-   $asgs_python $postprocessdir/scale_and_subset.py -o $output -hr $highres_roughness -w $wind -wfmt $wind_format -winp $wind_inp
+   $asgs_python $postprocessdir/scale_and_subset.py -o $output -hr $highres_roughness -w $wind_param -wfmt $wind_format -winp $wind_inp
+elif [ $wind_format == "blend" ]; then
+   $asgs_python $postprocessdir/scale_and_subset.py -o $output -hr $highres_roughness -w $wind_param -wfmt $wind_format -winp $wind_inp -wback $wind_back -wr $wind_roughness
 fi
 
 # call matlab script to trim depth data to RICHAMP region of interest
