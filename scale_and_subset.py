@@ -248,6 +248,7 @@ class NetcdfOutput:
 
 class OwiAsciiWind:
     # NOTE: This class assumes the same number of grid points in each time slice.
+    # The conversion will fail if this isn't the case.
     def __init__(self, win_filename, idx):
         self.__win_filename = win_filename
         self.__idx = idx
@@ -502,7 +503,7 @@ def speed_from_uv(u_vel, v_vel):
     
 def roughness_adjust(back_wind, param_wind, wfmt, z0_wr, z0_hr):
     from scipy import interpolate
-    from numpy import exp, log, sqrt, where, zeros
+    from numpy import exp, log, where, zeros
     import water_z0
     k = 0.40
     z_obs = 10
@@ -536,7 +537,7 @@ def roughness_adjust(back_wind, param_wind, wfmt, z0_wr, z0_hr):
         param_wind_z_ref = WindData(param_wind.date(), param_wind.wind_grid(), u_param_z_ref, v_param_z_ref)
         wind_z_ref = blend(back_wind_z_ref, param_wind_z_ref)    
     # Adjust every z0_wr as if it's water; save to z0_wr_water
-    wind_mag = sqrt(wind_z_ref.u_velocity()**2 + wind_z_ref.v_velocity()**2)
+    wind_mag = speed_from_uv(wind_z_ref.u_velocity(), wind_z_ref.v_velocity())
     wind_mag[where(wind_mag == 0)] = almost_zero # wind_mag == 0 would cause a divide by zero error below
     ust_est = water_z0.retrieve_ust_U10(wind_mag, z_obs) 
     z0_wr_water = z_obs * exp(-(k * wind_mag) / ust_est)   
@@ -563,7 +564,8 @@ def roughness_adjust(back_wind, param_wind, wfmt, z0_wr, z0_hr):
 
 
 def blend(back_wind, param_wind):
-    from numpy import floor, sqrt, zeros 
+    from datetime import datetime
+    from numpy import unravel_index, zeros
     from pandas import read_csv
     from pyproj import Geod
     from scipy import interpolate
@@ -581,25 +583,25 @@ def blend(back_wind, param_wind):
     for i in range(0,fort22_rows):
         lat_ctr[i] = float(fort22.iloc[i,6].replace('N',''))/10 # Assumes northern hemisphere
         lon_ctr[i] = -float(fort22.iloc[i,7].replace('W',''))/10 # Assumes western hemisphere
-        time_ctr[i] = int(fort22.iloc[i,2])
-    int_param_wind_date = int(param_wind.date().strftime('%Y%m%d%H'))
-    time_ctr = time_ctr.flatten()
-    lon_ctr_interpolant = interpolate.interp1d(time_ctr, lon_ctr.flatten(), kind='linear')
+        if i == 0:
+            time_ctr_date_0 = datetime.strptime(str(fort22.iloc[i,2]), '%Y%m%d%H')
+        time_ctr_date = datetime.strptime(str(fort22.iloc[i,2]), '%Y%m%d%H')
+        time_ctr[i] = (time_ctr_date - time_ctr_date_0).total_seconds()
+    int_param_wind_date = (param_wind.date() - time_ctr_date_0).total_seconds()
+    lon_ctr_interpolant = interpolate.interp1d(time_ctr.flatten(), lon_ctr.flatten(), kind='linear')
     lon_ctr_interp = lon_ctr_interpolant(int_param_wind_date)
-    lat_ctr_interpolant = interpolate.interp1d(time_ctr, lat_ctr.flatten(), kind='linear')
+    lat_ctr_interpolant = interpolate.interp1d(time_ctr.flatten(), lat_ctr.flatten(), kind='linear')
     lat_ctr_interp = lat_ctr_interpolant(int_param_wind_date)
     # Calculate RMW; fort.22 has a RMW column, but it's often set to 0
-    mag_param = sqrt(param_wind.u_velocity()**2 + param_wind.v_velocity()**2)
-    max_index = mag_param.argmax() # Will be the index of the flattened array
+    mag_param = speed_from_uv(param_wind.u_velocity(), param_wind.v_velocity())
     max_wind = mag_param.max()
-    num_lons = len(mag_param)
-    lon_max_index = max_index % num_lons
-    lat_max_index = int(floor(max_index / num_lons))
+    max_index = mag_param.argmax() # Returns the index of the flattened array
+    max_index_2d = unravel_index(max_index, (len(mag_param), len(mag_param[0]))) 
     wgs84_geod = Geod(ellps='WGS84') 
-    _,_,rmw = wgs84_geod.inv(lon_ctr_interp, lat_ctr_interp, param_wind.wind_grid().lon().item((lon_max_index,lat_max_index)), param_wind.wind_grid().lat().item((lon_max_index,lat_max_index)))
+    _,_,rmw = wgs84_geod.inv(lon_ctr_interp, lat_ctr_interp, param_wind.wind_grid().lon().item(max_index_2d), param_wind.wind_grid().lat().item(max_index_2d))
     # Blend outside RMW region and within low and high limits for wind speed, and apply parametric wind to vortex center
-    low_pct_of_max = .4
-    high_pct_of_max = .6
+    low_pct_of_max = .667
+    high_pct_of_max = .733
     low_lim = min(low_pct_of_max * max_wind, 15.5)
     high_lim = min(high_pct_of_max * max_wind, 20.5)
     lon_ctr_interp_grid = zeros((param_wind.wind_grid().lon1d().size, param_wind.wind_grid().lat1d().size)) + lon_ctr_interp
@@ -614,7 +616,7 @@ def blend(back_wind, param_wind):
     u_blend[blend_mask] = (alpha[blend_mask] * param_wind.u_velocity()[blend_mask]) + ((1 - alpha[blend_mask]) * back_wind_u_interp[blend_mask])
     v_blend[blend_mask] = (alpha[blend_mask] * param_wind.v_velocity()[blend_mask]) + ((1 - alpha[blend_mask]) * back_wind_v_interp[blend_mask])
     u_blend[back_mask] = back_wind_u_interp[back_mask]
-    v_blend[back_mask] = back_wind_v_interp[back_mask]
+    v_blend[back_mask] = back_wind_v_interp[back_mask]    
     return WindData(param_wind.date(), param_wind.wind_grid(), u_blend, v_blend)
     
     
