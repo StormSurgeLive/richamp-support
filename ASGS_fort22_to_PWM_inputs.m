@@ -213,5 +213,13 @@ for n=1:sz(1)
     fprintf(fid,'%s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s\n',x,str4,str5,str6,str7,str8,str9,str9,str10,str11,str12,str13,str14a,str14b,str14c,str14d, strL, str15a, str15b, str15c, str15d);
 end
 fclose(fid);
+%% write out time, pressure and radius of max winds
+fnp='TrackRMW.txt';
+fid=fopen(fnp,'w');
+  fprintf(fid,'%s\n','Yr, Mo, Day, Hr, Min, Sec, Central P(mbar), Background P(mbar), Radius of Max Winds (km)');
+for n=1:sz(1)  
+    fprintf(fid,'%s %s %s %s %s %s %s %s %s\n',num2str(At(n,1)),num2str(At(n,2)),num2str(At(n,3)),num2str(At(n,4)),num2str(At(n,5)),num2str(At(n,6)),num2str(Ad(n,3)),num2str(Ad(n,4)),num2str(Rmxc(n)));
+end
+fclose(fid);
 %%
 % cd(pd)
