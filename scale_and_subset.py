@@ -2,7 +2,7 @@
 # Contact: Josh Port (joshua_port@uri.edu)
 # Requirements: python3, numpy, netCDF4, pyproj, scipy
 #
-# Scales OWI ASCII or WND winds based on local surface roughness &
+# Scales OWI ASCII, WND, or blended OWI ASCII + WND winds based on local surface roughness
 # Outputs a value at every grid point in the roughness file
 #
 class WindGrid:
@@ -501,7 +501,7 @@ def speed_from_uv(u_vel, v_vel):
     return sqrt(u_vel**2 + v_vel**2)
 
     
-def roughness_adjust(back_wind, param_wind, wfmt, z0_wr, z0_hr):
+def roughness_adjust(back_wind, param_wind, wfmt, z0_wr, z0_hr, lon_ctr_interpolant, lat_ctr_interpolant, rmw_interpolant, time_ctr_date_0, time_rmw_date_0):
     from scipy import interpolate
     from numpy import exp, log, where, zeros
     import water_z0
@@ -535,7 +535,7 @@ def roughness_adjust(back_wind, param_wind, wfmt, z0_wr, z0_hr):
     elif wfmt == "blend":
         back_wind_z_ref = WindData(back_wind.date(), back_wind.wind_grid(), u_back_z_ref, v_back_z_ref)        
         param_wind_z_ref = WindData(param_wind.date(), param_wind.wind_grid(), u_param_z_ref, v_param_z_ref)
-        wind_z_ref = blend(back_wind_z_ref, param_wind_z_ref)    
+        wind_z_ref = blend(back_wind_z_ref, param_wind_z_ref, lon_ctr_interpolant, lat_ctr_interpolant, rmw_interpolant, time_ctr_date_0, time_rmw_date_0)    
     # Adjust every z0_wr as if it's water; save to z0_wr_water
     wind_mag = speed_from_uv(wind_z_ref.u_velocity(), wind_z_ref.v_velocity())
     wind_mag[where(wind_mag == 0)] = almost_zero # wind_mag == 0 would cause a divide by zero error below
@@ -563,18 +563,30 @@ def roughness_adjust(back_wind, param_wind, wfmt, z0_wr, z0_hr):
     return WindData(wind_z_ref.date(), WindGrid(z0_hr.lon(), z0_hr.lat()), u_adjust, v_adjust)
 
 
-def blend(back_wind, param_wind):
+def generate_rmw_interpolant():
     from datetime import datetime
-    from numpy import unravel_index, zeros
+    from numpy import zeros
     from pandas import read_csv
-    from pyproj import Geod
     from scipy import interpolate
-    # Interpolate back_wind to the param_wind spatial resolution (temporal is assumed to be the same)
-    u_interpolant = interpolate.interp2d(back_wind.wind_grid().lon1d(), back_wind.wind_grid().lat1d(), back_wind.u_velocity(), kind='linear')
-    back_wind_u_interp = u_interpolant(param_wind.wind_grid().lon1d(), param_wind.wind_grid().lat1d())
-    v_interpolant = interpolate.interp2d(back_wind.wind_grid().lon1d(), back_wind.wind_grid().lat1d(), back_wind.v_velocity(), kind='linear')
-    back_wind_v_interp = v_interpolant(param_wind.wind_grid().lon1d(), param_wind.wind_grid().lat1d())
-    # Determine storm center location at param_wind.date()
+    TrackRMW = read_csv('TrackRMW.txt', header=0, delim_whitespace=True)
+    TrackRMW_rows = len(TrackRMW)
+    rmw = zeros((TrackRMW_rows,1))
+    time_rmw = zeros((TrackRMW_rows,1))
+    for i in range(0,TrackRMW_rows):
+        rmw[i] = float(TrackRMW.iloc[i,8])
+        time_rmw_date = datetime(TrackRMW.iloc[i,0], TrackRMW.iloc[i,1], TrackRMW.iloc[i,2], TrackRMW.iloc[i,3], TrackRMW.iloc[i,4], TrackRMW.iloc[i,5])
+        if i == 0:
+            time_rmw_date_0 = time_rmw_date
+        time_rmw[i] = (time_rmw_date - time_rmw_date_0).total_seconds()
+    rmw_interpolant = interpolate.interp1d(time_rmw.flatten(), rmw.flatten(), kind='linear')
+    return rmw_interpolant, time_rmw_date_0
+
+
+def generate_ctr_interpolant():
+    from datetime import datetime
+    from numpy import zeros
+    from pandas import read_csv
+    from scipy import interpolate
     fort22 = read_csv('fort.22', header=None)
     fort22_rows = len(fort22)
     lat_ctr = zeros((fort22_rows,1))
@@ -583,31 +595,43 @@ def blend(back_wind, param_wind):
     for i in range(0,fort22_rows):
         lat_ctr[i] = float(fort22.iloc[i,6].replace('N',''))/10 # Assumes northern hemisphere
         lon_ctr[i] = -float(fort22.iloc[i,7].replace('W',''))/10 # Assumes western hemisphere
-        if i == 0:
-            time_ctr_date_0 = datetime.strptime(str(fort22.iloc[i,2]), '%Y%m%d%H')
         time_ctr_date = datetime.strptime(str(fort22.iloc[i,2]), '%Y%m%d%H')
+        if i == 0:
+            time_ctr_date_0 = time_ctr_date
         time_ctr[i] = (time_ctr_date - time_ctr_date_0).total_seconds()
-    int_param_wind_date = (param_wind.date() - time_ctr_date_0).total_seconds()
     lon_ctr_interpolant = interpolate.interp1d(time_ctr.flatten(), lon_ctr.flatten(), kind='linear')
-    lon_ctr_interp = lon_ctr_interpolant(int_param_wind_date)
     lat_ctr_interpolant = interpolate.interp1d(time_ctr.flatten(), lat_ctr.flatten(), kind='linear')
+    return lon_ctr_interpolant, lat_ctr_interpolant, time_ctr_date_0
+
+
+def blend(back_wind, param_wind, lon_ctr_interpolant, lat_ctr_interpolant, rmw_interpolant, time_ctr_date_0, time_rmw_date_0):
+    from numpy import zeros
+    from pyproj import Geod
+    from scipy import interpolate
+    # Interpolate back_wind to the param_wind spatial resolution (temporal is assumed to be the same)
+    u_interpolant = interpolate.interp2d(back_wind.wind_grid().lon1d(), back_wind.wind_grid().lat1d(), back_wind.u_velocity(), kind='linear')
+    back_wind_u_interp = u_interpolant(param_wind.wind_grid().lon1d(), param_wind.wind_grid().lat1d())
+    v_interpolant = interpolate.interp2d(back_wind.wind_grid().lon1d(), back_wind.wind_grid().lat1d(), back_wind.v_velocity(), kind='linear')
+    back_wind_v_interp = v_interpolant(param_wind.wind_grid().lon1d(), param_wind.wind_grid().lat1d())
+    # Determine storm center location at param_wind.date()
+    int_param_wind_date = (param_wind.date() - time_ctr_date_0).total_seconds()
+    lon_ctr_interp = lon_ctr_interpolant(int_param_wind_date)
     lat_ctr_interp = lat_ctr_interpolant(int_param_wind_date)
-    # Calculate RMW; fort.22 has a RMW column, but it's often set to 0
-    mag_param = speed_from_uv(param_wind.u_velocity(), param_wind.v_velocity())
-    max_wind = mag_param.max()
-    max_index = mag_param.argmax() # Returns the index of the flattened array
-    max_index_2d = unravel_index(max_index, (len(mag_param), len(mag_param[0]))) 
-    wgs84_geod = Geod(ellps='WGS84') 
-    _,_,rmw = wgs84_geod.inv(lon_ctr_interp, lat_ctr_interp, param_wind.wind_grid().lon().item(max_index_2d), param_wind.wind_grid().lat().item(max_index_2d))
-    # Blend outside RMW region and within low and high limits for wind speed, and apply parametric wind to vortex center
+    # Determine RMW at param_wind.date()
+    int_param_wind_date = (param_wind.date() - time_rmw_date_0).total_seconds()
+    rmw_interp = rmw_interpolant(int_param_wind_date)
+    # Blend outside RMW region and within low and high limits for wind speed, and apply background wind to vortex center
     low_pct_of_max = .667
     high_pct_of_max = .733
+    mag_param = speed_from_uv(param_wind.u_velocity(), param_wind.v_velocity())
+    max_wind = mag_param.max()
     low_lim = min(low_pct_of_max * max_wind, 15.5)
     high_lim = min(high_pct_of_max * max_wind, 20.5)
     lon_ctr_interp_grid = zeros((param_wind.wind_grid().lon1d().size, param_wind.wind_grid().lat1d().size)) + lon_ctr_interp
     lat_ctr_interp_grid = zeros((param_wind.wind_grid().lon1d().size, param_wind.wind_grid().lat1d().size)) + lat_ctr_interp
+    wgs84_geod = Geod(ellps='WGS84') 
     _,_,dist_from_ctr = wgs84_geod.inv(lon_ctr_interp_grid, lat_ctr_interp_grid, param_wind.wind_grid().lon(), param_wind.wind_grid().lat())
-    rmw_mask = dist_from_ctr <= rmw # Make sure we don't blend within the RMW
+    rmw_mask = dist_from_ctr <= rmw_interp # Make sure we don't blend within the RMW
     blend_mask = (low_lim < mag_param) & (mag_param < high_lim) & ~rmw_mask 
     back_mask = (mag_param <= low_lim) & ~rmw_mask
     u_blend = param_wind.u_velocity()
@@ -616,16 +640,18 @@ def blend(back_wind, param_wind):
     u_blend[blend_mask] = (alpha[blend_mask] * param_wind.u_velocity()[blend_mask]) + ((1 - alpha[blend_mask]) * back_wind_u_interp[blend_mask])
     v_blend[blend_mask] = (alpha[blend_mask] * param_wind.v_velocity()[blend_mask]) + ((1 - alpha[blend_mask]) * back_wind_v_interp[blend_mask])
     u_blend[back_mask] = back_wind_u_interp[back_mask]
-    v_blend[back_mask] = back_wind_v_interp[back_mask]    
+    v_blend[back_mask] = back_wind_v_interp[back_mask]
     return WindData(param_wind.date(), param_wind.wind_grid(), u_blend, v_blend)
-    
+
     
 def main():
     import argparse
     from datetime import datetime
-    parser = argparse.ArgumentParser(description="Scale and subset input wind data based on high-resolution land roughness")
+    
+    start = datetime.now()
 
-    # Arguments
+    # Build parser
+    parser = argparse.ArgumentParser(description="Scale and subset input wind data based on high-resolution land roughness")
     parser.add_argument("-o", metavar="outfile", type=str, help="Name of output file to be created", required=False, default="scaled_wind")
     parser.add_argument("-hr", metavar="highres_roughness", type=str, help="High-resolution land roughness file", required=True)
     parser.add_argument("-w", metavar="wind", type=str, help="Wind file to be scaled and subsetted", required=True)
@@ -637,6 +663,7 @@ def main():
     # Read the command line arguments
     args = parser.parse_args()
     
+    # Read relevant data & metadata
     wfmt = args.wfmt
     if wfmt == "owi-ascii":
         wind = None
@@ -664,13 +691,15 @@ def main():
         metadata = WndWindInp(args.winp)
         num_times = metadata.num_times()
         z0_wr = Roughness(args.wr)
+        # Generate interpolants used for every time slice
+        lon_ctr_interpolant, lat_ctr_interpolant, time_ctr_date_0 = generate_ctr_interpolant()
+        rmw_interpolant, time_rmw_date_0 = generate_rmw_interpolant()
     else:
         print("ERROR: Unsupported wind format. Please try again.")
         return
-    
     z0_hr = Roughness(args.hr) 
-    wind = None
     
+    wind = None
     time_index = 0
     while time_index < num_times:
         print("INFO: Processing time slice {:d} of {:d}".format(time_index + 1, num_times), flush=True)
@@ -688,13 +717,14 @@ def main():
             wnd = WndWind(args.w, metadata, time_index)
             back_wind = owi_ascii.get()
             param_wind = wnd.get()
-            wind_scaled = roughness_adjust(back_wind, param_wind, wfmt, z0_wr, z0_hr)
+            wind_scaled = roughness_adjust(back_wind, param_wind, wfmt, z0_wr, z0_hr, lon_ctr_interpolant, lat_ctr_interpolant, rmw_interpolant, time_ctr_date_0, time_rmw_date_0)
         if not wind:
             wind = NetcdfOutput(args.o, z0_hr.lon(), z0_hr.lat())
         wind.append(time_index, wind_scaled.date(), wind_scaled.u_velocity(), wind_scaled.v_velocity())
         time_index += 1  
     
     wind.close()
+    print("RICHAMP wind generation complete. Runtime:",str(datetime.now() - start))
 
 if __name__ == '__main__':
     main()
