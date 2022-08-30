@@ -213,5 +213,6 @@ for n=1:sz(1)
     fprintf(fid,'%s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s\n',x,str4,str5,str6,str7,str8,str9,str9,str10,str11,str12,str13,str14a,str14b,str14c,str14d, strL, str15a, str15b, str15c, str15d);
 end
 fclose(fid);
+
 %%
 % cd(pd)
