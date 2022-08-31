@@ -92,7 +92,9 @@ for i=1:length(ia)
     end
 end
 %%
-delete 'Wind_Inp.txt'
+if exist('Wind_Inp.txt', 'file')
+    delete 'Wind_Inp.txt'
+end
 fnw='Wind_Inp.txt';  % output file name
 fid=fopen(fnw,'w');
 tn='richamp';
