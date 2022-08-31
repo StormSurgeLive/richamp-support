@@ -535,7 +535,7 @@ def roughness_adjust(back_wind, param_wind, wfmt, z0_wr, z0_hr, lon_ctr_interpol
     elif wfmt == "blend":
         back_wind_z_ref = WindData(back_wind.date(), back_wind.wind_grid(), u_back_z_ref, v_back_z_ref)        
         param_wind_z_ref = WindData(param_wind.date(), param_wind.wind_grid(), u_param_z_ref, v_param_z_ref)
-        wind_z_ref = blend(back_wind_z_ref, param_wind_z_ref, lon_ctr_interpolant, lat_ctr_interpolant, rmw_interpolant, time_ctr_date_0, time_rmw_date_0)    
+        wind_z_ref = blend(back_wind_z_ref, param_wind_z_ref, lon_ctr_interpolant, lat_ctr_interpolant, rmw_interpolant, time_ctr_date_0, time_rmw_date_0)
     # Adjust every z0_wr as if it's water; save to z0_wr_water
     wind_mag = speed_from_uv(wind_z_ref.u_velocity(), wind_z_ref.v_velocity())
     wind_mag[where(wind_mag == 0)] = almost_zero # wind_mag == 0 would cause a divide by zero error below
@@ -573,7 +573,7 @@ def generate_rmw_interpolant():
     rmw = zeros((TrackRMW_rows,1))
     time_rmw = zeros((TrackRMW_rows,1))
     for i in range(0,TrackRMW_rows):
-        rmw[i] = float(TrackRMW.iloc[i,8])
+        rmw[i] = float(TrackRMW.iloc[i,8]) * 1000 # Convert from km to m
         time_rmw_date = datetime(TrackRMW.iloc[i,0], TrackRMW.iloc[i,1], TrackRMW.iloc[i,2], TrackRMW.iloc[i,3], TrackRMW.iloc[i,4], TrackRMW.iloc[i,5])
         if i == 0:
             time_rmw_date_0 = time_rmw_date
