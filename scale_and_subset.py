@@ -706,11 +706,11 @@ def main():
         if wfmt == "owi-ascii":
             owi_ascii = OwiAsciiWind(args.w, time_index)
             back_wind = owi_ascii.get()
-            wind_scaled = roughness_adjust(back_wind, None, wfmt, z0_wr, z0_hr)
+            wind_scaled = roughness_adjust(back_wind, None, wfmt, z0_wr, z0_hr, None, None, None, None, None)
         elif wfmt == "wnd":
             wnd = WndWind(args.w, metadata, time_index)
             param_wind = wnd.get()
-            wind_scaled = roughness_adjust(None, param_wind, wfmt, None, z0_hr)
+            wind_scaled = roughness_adjust(None, param_wind, wfmt, None, z0_hr, None, None, None, None, None)
         elif wfmt == "blend": 
             # Assumes the owi_ascii and wnd files have the same temporal resolution
             owi_ascii = OwiAsciiWind(args.wback, time_index)
