@@ -32,7 +32,7 @@ postprocessdir=$SCRIPTDIR/output/richamp-support
 if [ $tc_forcing == "on" ]; then
    # run URI parametric model
    module load matlab/2020b
-   matlab -nodesktop -nodisplay -nosplash -sd $postprocessdir -r "try, ASGS_fort22_to_PWM_inputs, catch me, fprintf('%s / %s\n',me.identifier,me.message), end, exit"
+   matlab -nodesktop -nodisplay -nosplash -r "addpath $postprocessdir, try, ASGS_fort22_to_PWM_inputs, catch me, fprintf('%s / %s\n',me.identifier,me.message), end, exit"
    $postprocessdir/windgfdl
    # pull in metadata for MetGet call
    wind_param=richamp.wnd
@@ -77,7 +77,7 @@ fi
 indir=$PWD/  # Matlab script expects trailing slashes
 outdir=$PWD/
 module load matlab/2020b
-matlab -nodesktop -nodisplay -nosplash -sd $postprocessdir -r "try, subset_fort63_richamp $indir $outdir, catch me, fprintf('%s / %s\n',me.identifier,me.message), end, exit"
+matlab -nodesktop -nodisplay -nosplash -r "addpath $postprocessdir, try, subset_fort63_richamp $indir $outdir, catch me, fprintf('%s / %s\n',me.identifier,me.message), end, exit"
 # check to see if matlab script finished successfully
 if [[ $? == 0 ]]; then
    echo "\"finish\" : \"[$(date +'%Y-%h-%d-T%H:%M:%S%z')]\", \"jobid\" : \"${SLURM_JOBID}\"" > $targetScript.finish # <-OVERWRITE
