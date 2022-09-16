@@ -175,28 +175,28 @@ class NetcdfOutput:
         self.__group_main_dim_latitude = self.__group_main.createDimension("latitude", len(self.__lat))
 
         # Create variables (with compression)
-        self.__group_main_var_time      = self.__group_main.createVariable("time", "f4", "time", zlib=True, complevel=2,
-                                                                           fill_value=netCDF4.default_fillvals["f4"])
-        self.__group_main_var_time_unix = self.__group_main.createVariable("time_unix", "f8", "time", zlib=True, complevel=2,
-                                                                           fill_value=netCDF4.default_fillvals["f8"]) # int64 isn't supported in DAP2 
+        # self.__group_main_var_time      = self.__group_main.createVariable("time", "f4", "time", zlib=True, complevel=2,
+        #                                                                    fill_value=netCDF4.default_fillvals["f4"])
+        self.__group_main_var_time_unix = self.__group_main.createVariable("time_unix", "i8", "time", zlib=True, complevel=2,
+                                                                           fill_value=netCDF4.default_fillvals["i8"]) # int64 isn't supported in DAP2; still using unless RICHAMP needs DAP2 
         self.__group_main_var_lon       = self.__group_main.createVariable("lon", "f8", "longitude", zlib=True, complevel=2,
                                                                            fill_value=netCDF4.default_fillvals["f8"])
         self.__group_main_var_lat       = self.__group_main.createVariable("lat", "f8", "latitude", zlib=True, complevel=2,
                                                                            fill_value=netCDF4.default_fillvals["f8"])
-        self.__group_main_var_u10       = self.__group_main.createVariable("U10", "f4", ("time", "latitude", "longitude"), zlib=True,
-                                                                           complevel=2,fill_value=netCDF4.default_fillvals["f4"])
-        self.__group_main_var_v10       = self.__group_main.createVariable("V10", "f4", ("time", "latitude", "longitude"), zlib=True,
-                                                                           complevel=2,fill_value=netCDF4.default_fillvals["f4"])
+        # self.__group_main_var_u10       = self.__group_main.createVariable("U10", "f4", ("time", "latitude", "longitude"), zlib=True,
+        #                                                                    complevel=2,fill_value=netCDF4.default_fillvals["f4"])
+        # self.__group_main_var_v10       = self.__group_main.createVariable("V10", "f4", ("time", "latitude", "longitude"), zlib=True,
+        #                                                                    complevel=2,fill_value=netCDF4.default_fillvals["f4"])
         self.__group_main_var_spd       = self.__group_main.createVariable("spd", "f4", ("time", "latitude", "longitude"), zlib=True,
                                                                            complevel=2,fill_value=netCDF4.default_fillvals["f4"])
         self.__group_main_var_dir       = self.__group_main.createVariable("dir", "f4", ("time", "latitude", "longitude"), zlib=True,
                                                                            complevel=2,fill_value=netCDF4.default_fillvals["f4"])
 
         # Add attributes to variables
-        self.__base_date = datetime(1990, 1, 1, 0, 0, 0)
-        self.__group_main_var_time.units = "minutes since 1990-01-01 00:00:00 Z"
-        self.__group_main_var_time.axis = "T"
-        self.__group_main_var_time.coordinates = "time"
+        # self.__base_date = datetime(1990, 1, 1, 0, 0, 0)
+        # self.__group_main_var_time.units = "minutes since 1990-01-01 00:00:00 Z"
+        # self.__group_main_var_time.axis = "T"
+        # self.__group_main_var_time.coordinates = "time"
         
         self.__base_date_unix = datetime(1970, 1, 1, 0, 0, 0)
         self.__group_main_var_time_unix.units = "seconds since 1970-01-01 00:00:00 Z"
@@ -213,11 +213,11 @@ class NetcdfOutput:
         self.__group_main_var_lat.standard_name = "latitude"
         self.__group_main_var_lat.axis = "y"
 
-        self.__group_main_var_u10.units = "m s-1"
-        self.__group_main_var_u10.coordinates = "time lat lon"
+        # self.__group_main_var_u10.units = "m s-1"
+        # self.__group_main_var_u10.coordinates = "time lat lon"
 
-        self.__group_main_var_v10.units = "m s-1"
-        self.__group_main_var_v10.coordinates = "time lat lon"
+        # self.__group_main_var_v10.units = "m s-1"
+        # self.__group_main_var_v10.coordinates = "time lat lon"
         
         self.__group_main_var_spd.units = "m s-1"
         self.__group_main_var_spd.coordinates = "time lat lon"
@@ -229,16 +229,16 @@ class NetcdfOutput:
         self.__group_main_var_lon[:] = self.__lon
 
     def append(self, idx, date, uvel, vvel):
-        delta = (date - self.__base_date)
-        minutes = round((delta.days * 86400 + delta.seconds) / 60)
+        # delta = (date - self.__base_date)
+        # minutes = round((delta.days * 86400 + delta.seconds) / 60)
         
         delta_unix = (date - self.__base_date_unix)
         seconds = round(delta_unix.days * 86400 + delta_unix.seconds)
 
-        self.__group_main_var_time[idx] = minutes
+        # self.__group_main_var_time[idx] = minutes
         self.__group_main_var_time_unix[idx] = seconds
-        self.__group_main_var_u10[idx, :, :] = uvel
-        self.__group_main_var_v10[idx, :, :] = vvel
+        # self.__group_main_var_u10[idx, :, :] = uvel
+        # self.__group_main_var_v10[idx, :, :] = vvel
         self.__group_main_var_spd[idx, :, :] = speed_from_uv(uvel, vvel)
         self.__group_main_var_dir[idx, :, :] = direction_from_uv(uvel, vvel)
 
