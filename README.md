@@ -16,7 +16,7 @@ NOTE: You should already have set up an ASGS instance before you go through this
         1. diag_parm.nml
         2. windgfdl
     6. From within ASGSH run the following:
-        1. “pip3 install pyproj requests scipy”
+        1. “pip3 install pandas pyproj requests scipy”
         2. “export METGET_API_KEY=[URI MetGet API key from step 1]”
         3. “export METGET_ENDPOINT=https://api.metget.zachcobell.com”
     7. Open your ASGS config file
