@@ -49,7 +49,7 @@ if [ $tc_forcing == "on" ]; then
    $asgs_python $postprocessdir/get_metget_data.py --domain gfs 0.25 -72 41 -71 43 --start "$t_start" --end "$t_end" --timestep 3600 --output $wind_back_filename --multiple_forecasts --format owi-ascii --variable wind_pressure
    wind_back=$wind_back_filename\_00.wnd
    # determine wind format based on available files
-   if [[ ! -r "$wind_param"  || ! -r "$wind_inp" ]] && [[ -r "$wind_back" ]]; then
+   if [[ ! -r "$wind_param" || ! -r "$wind_inp" ]] && [[ -r "$wind_back" ]]; then
       wind_format="owi-ascii"
    elif [[ -r "$wind_param" && -r "$wind_inp" ]] && [[ ! -r "$wind_back" ]]; then
       wind_format="wnd"
