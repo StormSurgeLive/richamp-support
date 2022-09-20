@@ -33,6 +33,7 @@ if [ $tc_forcing == "on" ]; then
    # run URI parametric model
    module load matlab/2020b
    matlab -nodesktop -nodisplay -nosplash -r "addpath $postprocessdir, try, ASGS_fort22_to_PWM_inputs, catch me, fprintf('%s / %s\n',me.identifier,me.message), end, exit"
+   ln -s $postprocessdir/diag_parm.nml diag_parm.nml
    $postprocessdir/windgfdl
    # pull in metadata for MetGet call
    wind_param=richamp.wnd
