@@ -27,4 +27,4 @@ NOTE: You should already have set up an ASGS instance before you go through this
   - postAdditionalFiles=( RICHAMP_fort63.nc RICHAMP_wind.nc )
 9. You are now set up! Just run ASGS as you would normally.
   - If you need to troubleshoot, refer to uri_post.err and uri_post.out, which will be generated in the ASGS scenario directory, and richamp_scale_and_subset.sh.log, which will be generated in the richamp-support folder.
-  * If you get stuck or find a bug, contact Josh Port (joshua_port@uri.edu). If Josh is unavailable, try reaching out to Dave Ullman (dullman@uri.edu).
+  - If you get stuck or find a bug, contact Josh Port (joshua_port@uri.edu). If Josh is unavailable, try reaching out to Dave Ullman (dullman@uri.edu).
