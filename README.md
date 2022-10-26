@@ -7,8 +7,8 @@ NOTE: You should already have set up an ASGS instance before you go through this
 1. Contact Josh Port (joshua_port@uri.edu) and ask him for the URI MetGet API key. If Josh is unavailable, try reaching out to Zach Cobell (zcobell@thewaterinstitute.org).
 2. Navigate to the output subfolder within your main ASGS directory (i.e. SCRIPTDIR/output)
 3. Run “git clone git@github.com:StormSurgeLive/richamp-support”. This will pull down the latest post-processing code from GitHub. The folder this command creates will henceforth be referred to as the “post-processing directory”.
-  * You should have already set up SSH keys for GitHub when you configured ASGS, but if not use “git clone https://github.com/StormSurgeLive/richamp-support” instead. You may also need to do some git configuration if you haven’t used it on hatteras yet. Git should prompt you if so. Just follow the instructions.
-  * If you ever need to pull down updates to the code in the future, you can do this via “git pull”.
+  a You should have already set up SSH keys for GitHub when you configured ASGS, but if not use “git clone https://github.com/StormSurgeLive/richamp-support” instead. You may also need to do some git configuration if you haven’t used it on hatteras yet. Git should prompt you if so. Just follow the instructions.
+  b If you ever need to pull down updates to the code in the future, you can do this via “git pull”.
 4. Copy the following two NetCDFs from /home/joshua_p/postprocess to your richamp-support directory:
   * gfs-roughness.nc
   * NLCD_z0_RICHAMP_Reg_Grid.nc
