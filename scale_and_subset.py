@@ -175,28 +175,28 @@ class NetcdfOutput:
         self.__group_main_dim_latitude = self.__group_main.createDimension("latitude", len(self.__lat))
 
         # Create variables (with compression)
-        # self.__group_main_var_time      = self.__group_main.createVariable("time", "f4", "time", zlib=True, complevel=2,
-        #                                                                    fill_value=netCDF4.default_fillvals["f4"])
+        self.__group_main_var_time      = self.__group_main.createVariable("time", "f4", "time", zlib=True, complevel=2,
+                                                                            fill_value=netCDF4.default_fillvals["f4"])
         self.__group_main_var_time_unix = self.__group_main.createVariable("time_unix", "i8", "time", zlib=True, complevel=2,
-                                                                           fill_value=netCDF4.default_fillvals["i8"]) # int64 isn't supported in DAP2; still using unless RICHAMP needs DAP2 
+                                                                           fill_value=netCDF4.default_fillvals["i8"]) # int64 isn't supported in DAP2; still using unless RICHAMP needs DAP2
         self.__group_main_var_lon       = self.__group_main.createVariable("lon", "f8", "longitude", zlib=True, complevel=2,
                                                                            fill_value=netCDF4.default_fillvals["f8"])
         self.__group_main_var_lat       = self.__group_main.createVariable("lat", "f8", "latitude", zlib=True, complevel=2,
                                                                            fill_value=netCDF4.default_fillvals["f8"])
         # self.__group_main_var_u10       = self.__group_main.createVariable("U10", "f4", ("time", "latitude", "longitude"), zlib=True,
-        #                                                                    complevel=2,fill_value=netCDF4.default_fillvals["f4"])
+        #                                                                     complevel=2,fill_value=netCDF4.default_fillvals["f4"])
         # self.__group_main_var_v10       = self.__group_main.createVariable("V10", "f4", ("time", "latitude", "longitude"), zlib=True,
-        #                                                                    complevel=2,fill_value=netCDF4.default_fillvals["f4"])
+        #                                                                     complevel=2,fill_value=netCDF4.default_fillvals["f4"])
         self.__group_main_var_spd       = self.__group_main.createVariable("spd", "f4", ("time", "latitude", "longitude"), zlib=True,
                                                                            complevel=2,fill_value=netCDF4.default_fillvals["f4"])
         self.__group_main_var_dir       = self.__group_main.createVariable("dir", "f4", ("time", "latitude", "longitude"), zlib=True,
                                                                            complevel=2,fill_value=netCDF4.default_fillvals["f4"])
 
         # Add attributes to variables
-        # self.__base_date = datetime(1990, 1, 1, 0, 0, 0)
-        # self.__group_main_var_time.units = "minutes since 1990-01-01 00:00:00 Z"
-        # self.__group_main_var_time.axis = "T"
-        # self.__group_main_var_time.coordinates = "time"
+        self.__base_date = datetime(1990, 1, 1, 0, 0, 0)
+        self.__group_main_var_time.units = "minutes since 1990-01-01 00:00:00 Z"
+        self.__group_main_var_time.axis = "T"
+        self.__group_main_var_time.coordinates = "time"
         
         self.__base_date_unix = datetime(1970, 1, 1, 0, 0, 0)
         self.__group_main_var_time_unix.units = "seconds since 1970-01-01 00:00:00 Z"
@@ -229,18 +229,18 @@ class NetcdfOutput:
         self.__group_main_var_lon[:] = self.__lon
 
     def append(self, idx, date, uvel, vvel):
-        # delta = (date - self.__base_date)
-        # minutes = round((delta.days * 86400 + delta.seconds) / 60)
+        delta = (date - self.__base_date)
+        minutes = round((delta.days * 86400 + delta.seconds) / 60)
         
         delta_unix = (date - self.__base_date_unix)
         seconds = round(delta_unix.days * 86400 + delta_unix.seconds)
 
-        # self.__group_main_var_time[idx] = minutes
+        self.__group_main_var_time[idx] = minutes
         self.__group_main_var_time_unix[idx] = seconds
         # self.__group_main_var_u10[idx, :, :] = uvel
         # self.__group_main_var_v10[idx, :, :] = vvel
-        self.__group_main_var_spd[idx, :, :] = speed_from_uv(uvel, vvel)
-        self.__group_main_var_dir[idx, :, :] = direction_from_uv(uvel, vvel)
+        self.__group_main_var_spd[idx, :, :] = magnitude_from_uv(uvel, vvel)
+        self.__group_main_var_dir[idx, :, :] = dir_met_to_and_from_math(direction_from_uv(uvel, vvel))
 
     def close(self):
         self.__nc.close()
@@ -448,7 +448,7 @@ class WndWind:
         self.__sw_corner_lon = self.__wind_inp.w_lim()
         self.__lat_step = self.__wind_inp.spatial_res()
         self.__lon_step = self.__wind_inp.spatial_res()
-        self.__idx_start_row = self.__get_idx_start_row()
+        self.__idlon_start_row = self.__get_idlon_start_row()
         self.__date = self.__get_date()
         self.__grid = self.__get_grid()
 
@@ -458,7 +458,7 @@ class WndWind:
     def grid(self):
         return self.__grid 
             
-    def __get_idx_start_row(self):
+    def __get_idlon_start_row(self):
         return self.__num_lats * self.__num_lons * self.__idx
 
     def __get_date(self):
@@ -478,37 +478,121 @@ class WndWind:
         uvel = [[None for i in range(self.__num_lons)] for j in range(self.__num_lats)]
         vvel = [[None for i in range(self.__num_lons)] for j in range(self.__num_lats)]
         for i in range(self.__num_lats * self.__num_lons):
-            line_idx = self.__idx_start_row + i
+            line_idx = self.__idlon_start_row + i
             lon_idx = i % self.__num_lons
             lat_idx = self.__num_lats - floor(i / self.__num_lons) - 1 # WND starts in the NW corner and goes row by row
             uvel[lat_idx][lon_idx] = float(lines[line_idx][0:9])   
             vvel[lat_idx][lon_idx] = float(lines[line_idx][10:19])   
         wnd_file.close()
         return WindData(self.__date, self.__grid, uvel, vvel)
+
+
+def dir_met_to_and_from_math(direction):
+    return (270 - direction) % 360 # Formula is the same each way
     
     
 def direction_from_uv(u_vel, v_vel):
-    from numpy import arctan, pi, rad2deg, where
-    u_vel[where(u_vel == 0)] = 0.0000000001 # imperceptibly hurt precision to avoid divide by zero errors
-    dir_math = arctan(v_vel / u_vel)
-    dir_math[where(u_vel < 0)] = dir_math[where(u_vel < 0)] + pi; # arctan only returns values from -pi to pi. We need values from 0 to 2*pi.
-    dir_met_radians = ((3 * pi / 2) - dir_math) % (2 * pi) # Meteorological heading
-    return rad2deg(dir_met_radians)
+    from numpy import arctan, rad2deg
+    u_vel[u_vel == 0] = 0.0000000001 # Avoid divide by zero errors
+    dir_math = rad2deg(arctan(v_vel / u_vel))
+    # arctan only returns values from -pi/2 to pi/2. We need values from 0 to 2*pi.
+    dir_math[u_vel < 0] = dir_math[u_vel < 0] + 180; # Quadrants 2 & 3
+    dir_math[dir_math < 0] = dir_math[dir_math < 0] + 360 # Quadrant 4
+    return dir_math
 
 
-def speed_from_uv(u_vel, v_vel):
+def magnitude_from_uv(u_vel, v_vel):
     from numpy import sqrt
     return sqrt(u_vel**2 + v_vel**2)
 
-    
-def roughness_adjust(back_wind, param_wind, wfmt, z0_wr, z0_hr, lon_ctr_interpolant, lat_ctr_interpolant, rmw_interpolant, time_ctr_date_0, time_rmw_date_0):
+
+def angle_diff(deg1, deg2):
+    delta = deg1 - deg2
+    return abs((delta + 180) % 360 - 180)
+
+
+def generate_directional_z0_interpolant(lon_grid, lat_grid, z0_hr_hr_grid):
+    # For each point in the RICHAMP grid, create a twelve 30-degree cone in the meteorological wind direction with some length. 
+    # Consider only the discrete z0 points within the cone. 
+    # Use a Gaussian decay function to calculate a weighted z0 value over the whole cone based on the discrete parts.
+    # Use the same weighting and twelve 30-degree cone method as John Ratcliff & Rick Luettich
+    from math import ceil, floor
+    from numpy import linspace, exp, logical_and, sum, zeros
     from scipy import interpolate
-    from numpy import exp, log, where, zeros
-    import water_z0
-    k = 0.40
-    z_obs = 10
+    from pyproj import Geod
+    richamp_mid_lat = 41.5917 # degrees N
+    richamp_mid_lon = -71.5042 # degrees E
+    cone_radius = 3000 # meters
+    cone_width = 30 # degrees
+    half_cone_width = cone_width / 2
+    approx_grid_resolution = 30 # meters
+    n_fwd_back = ceil(cone_radius / approx_grid_resolution)
+    cone_ctr_angle = linspace(0,360,13)
+    wgs84_geod = Geod(ellps='WGS84') 
+    _,_,one_deg_lon = wgs84_geod.inv(richamp_mid_lon - 0.5, richamp_mid_lat, richamp_mid_lon + 0.5, richamp_mid_lat)
+    _,_,one_deg_lat = wgs84_geod.inv(richamp_mid_lon, richamp_mid_lat - 0.5, richamp_mid_lon, richamp_mid_lat + 0.5)
+    n_lat = len(z0_hr_hr_grid)
+    n_lon = len(z0_hr_hr_grid[0])
+    n_z0 = len(cone_ctr_angle) - 1 # A row for 360 degrees exists to allow interpolation between 330 and 0, but we don't calculate z0 for it
+    z0_directional = zeros((n_lat, n_lon, n_z0 + 1))
+    # Pre-calculate distance and angle for points that could be in_cone
+    mid_lon = ceil(n_lon / 2)
+    mid_lat = ceil(n_lat / 2)
+    lon_start = mid_lon - n_fwd_back
+    lon_end = mid_lon + n_fwd_back + 1
+    lat_start = mid_lat - n_fwd_back
+    lat_end = mid_lat + n_fwd_back + 1
+    full_end = 2 * n_fwd_back + 1
+    _,_,distance = wgs84_geod.inv(zeros((full_end, full_end)) + lon_grid[mid_lat,mid_lon], zeros((full_end, full_end)) + lat_grid[mid_lat,mid_lon], 
+                                  lon_grid[lat_start:lat_end,lon_start:lon_end], lat_grid[lat_start:lat_end,lon_start:lon_end])
+    weight = exp(-distance**2 / (2 * cone_radius**2))
+    direction = direction_from_uv(one_deg_lon * (lon_grid[mid_lat,mid_lon] - lon_grid[lat_start:lat_end,lon_start:lon_end]),
+                                  one_deg_lat * (lat_grid[mid_lat,mid_lon] - lat_grid[lat_start:lat_end,lon_start:lon_end]))
+    in_cone_if_in_grid = zeros((full_end, full_end, n_z0), dtype=bool)
+    full_cone_weight = zeros((n_z0))
+    for k in range(n_z0):
+        in_cone_if_in_grid[:,:,k] = logical_and(distance <= cone_radius, 
+                                                angle_diff(direction, cone_ctr_angle[k]) <= half_cone_width)
+        in_cone_if_in_grid[n_fwd_back,n_fwd_back,k] = True # the point of interest must be in every cone
+        full_cone_weight[k] = sum(weight[in_cone_if_in_grid[:,:,k]])
+    # Calculate z0 for each cone at each point
+    old_pct_complete = 0
+    for i in range(n_lat):
+        pct_complete = floor(100 * (i / n_lat))
+        if pct_complete != old_pct_complete:
+            print("INFO: Interpolant generation " + str(pct_complete) + "% complete", flush=True)
+            old_pct_complete = pct_complete
+        local_lat_start = max(0, n_fwd_back - i)
+        local_lat_end = full_end - max(0, n_fwd_back + i + 1 - n_lat)
+        lat_start = max(0, i - n_fwd_back)
+        lat_end = min(n_lat, i + n_fwd_back + 1)
+        for j in range(n_lon):
+            local_lon_start = max(0, n_fwd_back - j)
+            local_lon_end = full_end - max(0, n_fwd_back + j + 1 - n_lon)
+            lon_start = max(0, j - n_fwd_back)
+            lon_end = min(n_lon, j + n_fwd_back + 1)
+            if local_lon_start != 0 or local_lat_start != 0 or local_lon_end != full_end or local_lat_end != full_end: # Only recalculate weight sums near the edge of the domain (where some cones are cut off)
+                for k in range(n_z0):
+                    z0_directional[i,j,k] = sum(weight[local_lat_start:local_lat_end,local_lon_start:local_lon_end][in_cone_if_in_grid[local_lat_start:local_lat_end,local_lon_start:local_lon_end,k]] \
+                                          * z0_hr_hr_grid[lat_start:lat_end,lon_start:lon_end][in_cone_if_in_grid[local_lat_start:local_lat_end,local_lon_start:local_lon_end,k]]) \
+                                        / sum(weight[local_lat_start:local_lat_end,local_lon_start:local_lon_end][in_cone_if_in_grid[local_lat_start:local_lat_end,local_lon_start:local_lon_end,k]])
+            else: # Otherwise, use full_cone_weight
+                for k in range(n_z0):
+                    z0_directional[i,j,k] = sum(weight[in_cone_if_in_grid[:,:,k]] * z0_hr_hr_grid[lat_start:lat_end,lon_start:lon_end][in_cone_if_in_grid[:,:,k]]) / full_cone_weight[k]
+    z0_directional[:,:,n_z0] = z0_directional[:,:,0] # 360 degrees and 0 degrees are the same
+    # Create interpolant
+    z0_directional_interpolant = interpolate.RegularGridInterpolator((lat_grid[:,0], lon_grid[0,:], cone_ctr_angle), z0_directional, method='linear')   
+    print("INFO: Interpolant generation 100% complete", flush=True)
+    return z0_directional_interpolant
+
+  
+def roughness_adjust(back_wind, param_wind, wfmt, z0_wr, z0_hr, z0_directional_interpolant, lon_ctr_interpolant, lat_ctr_interpolant, rmw_interpolant, time_ctr_date_0, time_rmw_date_0):
+    # NOTE: Past versions of this function derived z0 from wind stress over water. 
+    # That is not feasible performance-wise while also calculating directional z0, so that functionality has been removed.
+    # Constant z0 values directly from the appropriate roughness file are now used over water.
+    from scipy import interpolate
+    from numpy import log, zeros
     z0_param = 0.0033
-    almost_zero = 0.000001
     # Scale input wind up to z_ref using equations 9 & 10 here: https://dr.lib.iastate.edu/handle/20.500.12876/1131
     z_ref = 80 # Per Isaac the logarithmic profile only applies in the near surface layer, which extends roughly 80m up; to verify with lit review
     if (wfmt == "owi-ascii") | (wfmt == "blend"):
@@ -536,31 +620,21 @@ def roughness_adjust(back_wind, param_wind, wfmt, z0_wr, z0_hr, lon_ctr_interpol
         back_wind_z_ref = WindData(back_wind.date(), back_wind.wind_grid(), u_back_z_ref, v_back_z_ref)        
         param_wind_z_ref = WindData(param_wind.date(), param_wind.wind_grid(), u_param_z_ref, v_param_z_ref)
         wind_z_ref = blend(back_wind_z_ref, param_wind_z_ref, lon_ctr_interpolant, lat_ctr_interpolant, rmw_interpolant, time_ctr_date_0, time_rmw_date_0)
-    # Adjust every z0_wr as if it's water; save to z0_wr_water
-    wind_mag = speed_from_uv(wind_z_ref.u_velocity(), wind_z_ref.v_velocity())
-    wind_mag[where(wind_mag == 0)] = almost_zero # wind_mag == 0 would cause a divide by zero error below
-    ust_est = water_z0.retrieve_ust_U10(wind_mag, z_obs) 
-    z0_wr_water = z_obs * exp(-(k * wind_mag) / ust_est)   
-    # Interpolate wind_z_ref and z0_wr_water to z0_hr resolution
+    # Interpolate wind_z_ref to z0_hr resolution
     u_interpolant = interpolate.interp2d(wind_z_ref.wind_grid().lon1d(), wind_z_ref.wind_grid().lat1d(), wind_z_ref.u_velocity(), kind='linear')
     u_z_ref_hr_grid = u_interpolant(z0_hr.lon(), z0_hr.lat())
     v_interpolant = interpolate.interp2d(wind_z_ref.wind_grid().lon1d(), wind_z_ref.wind_grid().lat1d(), wind_z_ref.v_velocity(), kind='linear')
     v_z_ref_hr_grid = v_interpolant(z0_hr.lon(), z0_hr.lat())
     del u_interpolant, v_interpolant
-    z0_water_interpolant = interpolate.interp2d(wind_z_ref.wind_grid().lon1d(), wind_z_ref.wind_grid().lat1d(), z0_wr_water, kind='linear')
-    z0_wr_water_hr_grid = z0_water_interpolant(z0_hr.lon(), z0_hr.lat())
-    del z0_water_interpolant
-    # Re-assign roughness values over sea for z0_hr
-    z0_hr_hr_grid = z0_hr.land_rough()
-    for i in range(len(z0_hr_hr_grid)):
-        for j in range(len(z0_hr_hr_grid[0])):
-            if z0_hr_hr_grid[i,j] < 0.0031: # == 0.003, but floats are evil and round() is slow
-                z0_hr_hr_grid[i,j] = z0_wr_water_hr_grid[i,j]
+    # Modify z0 based on directional roughness
+    z0_hr_grid = WindGrid(z0_hr.lon(), z0_hr.lat())
+    dir_hr_grid = direction_from_uv(u_z_ref_hr_grid, v_z_ref_hr_grid)
+    z0_hr_directional = z0_directional_interpolant((z0_hr_grid.lat(), z0_hr_grid.lon(), dir_hr_grid))
     # Scale back down to 10 meters using the local z0 value
-    b = 1 / (log(10) - log(z0_hr_hr_grid)) # Eq 10
+    b = 1 / (log(10) - log(z0_hr_directional)) # Eq 10
     u_adjust = u_z_ref_hr_grid / (1 + b * log(z_ref / 10)) # Eq 9; roughness-adjusted wind speed 
     v_adjust = v_z_ref_hr_grid / (1 + b * log(z_ref / 10)) # Eq 9; roughness-adjusted wind speed 
-    return WindData(wind_z_ref.date(), WindGrid(z0_hr.lon(), z0_hr.lat()), u_adjust, v_adjust)
+    return WindData(wind_z_ref.date(), z0_hr_grid, u_adjust, v_adjust)
 
 
 def generate_rmw_interpolant():
@@ -623,7 +697,7 @@ def blend(back_wind, param_wind, lon_ctr_interpolant, lat_ctr_interpolant, rmw_i
     # Blend outside RMW region and within low and high limits for wind speed, and apply background wind to vortex center
     low_pct_of_max = .667
     high_pct_of_max = .733
-    mag_param = speed_from_uv(param_wind.u_velocity(), param_wind.v_velocity())
+    mag_param = magnitude_from_uv(param_wind.u_velocity(), param_wind.v_velocity())
     max_wind = mag_param.max()
     low_lim = min(low_pct_of_max * max_wind, 15.5)
     high_lim = min(high_pct_of_max * max_wind, 20.5)
@@ -647,7 +721,7 @@ def blend(back_wind, param_wind, lon_ctr_interpolant, lat_ctr_interpolant, rmw_i
 def main():
     import argparse
     from datetime import datetime
-    
+    from numpy import load, meshgrid, save 
     start = datetime.now()
 
     # Build parser
@@ -659,6 +733,8 @@ def main():
     parser.add_argument("-wfmt", metavar="wind_format", type=str, help="Format of the input wind file. Supported values: owi-ascii, wnd, blend", required=True)
     parser.add_argument("-winp", metavar="wind_inp", type=str, help="Wind_Inp.txt metadata file; required if wfmt is wnd or blend", required=False)
     parser.add_argument("-wr", metavar="wind_roughness", type=str, help="Wind-resolution land roughness file; required if wfmt is owi-ascii or blend", required=False)
+    parser.add_argument("-z0sv", help="Add this flag to generate and save off directional z0 interpolants; do this in advance to save time during regular runs", action='store_true', required=False, default=False)
+    parser.add_argument("-z0name", metavar="z0_name", type=str, help="Name of directional z0 interpolants file; it will be generated if z0sv is True and loaded if z0sv is False", required=False, default='z0_interp')
 
     # Read the command line arguments
     args = parser.parse_args()
@@ -691,14 +767,26 @@ def main():
         metadata = WndWindInp(args.winp)
         num_times = metadata.num_times()
         z0_wr = Roughness(args.wr)
-        # Generate interpolants used for every time slice
+        # Generate blend-specific interpolants used for every time slice
         lon_ctr_interpolant, lat_ctr_interpolant, time_ctr_date_0 = generate_ctr_interpolant()
         rmw_interpolant, time_rmw_date_0 = generate_rmw_interpolant()
     else:
-        print("ERROR: Unsupported wind format. Please try again.")
+        print("ERROR: Unsupported wind format. Please try again.", flush=True)
         return
-    z0_hr = Roughness(args.hr) 
+    z0_hr = Roughness(args.hr)
+    lon_grid, lat_grid = meshgrid(z0_hr.lon(), z0_hr.lat())
     
+    # Generate or load directional z0 interpolants
+    if args.z0sv:
+        print("INFO: z0sv is True, so a directional z0 interpolant file will be generated. This will take a while.", flush=True)
+        print("INFO: Generating directional z0 interpolant...", flush=True)
+        z0_directional_interpolant = generate_directional_z0_interpolant(lon_grid, lat_grid, z0_hr.land_rough())
+        save(args.z0name + '.npy', z0_directional_interpolant)
+    else:
+        print("INFO: Loading directional z0 interpolant...", flush=True)
+        z0_directional_interpolant = load(args.z0name + '.npy', allow_pickle=True)[()]
+    
+    # Scale wind one time slice at a time
     wind = None
     time_index = 0
     while time_index < num_times:
@@ -706,25 +794,25 @@ def main():
         if wfmt == "owi-ascii":
             owi_ascii = OwiAsciiWind(args.w, time_index)
             back_wind = owi_ascii.get()
-            wind_scaled = roughness_adjust(back_wind, None, wfmt, z0_wr, z0_hr, None, None, None, None, None)
+            wind_scaled = roughness_adjust(back_wind, None, wfmt, z0_wr, z0_hr, z0_directional_interpolant, None, None, None, None, None)
         elif wfmt == "wnd":
             wnd = WndWind(args.w, metadata, time_index)
             param_wind = wnd.get()
-            wind_scaled = roughness_adjust(None, param_wind, wfmt, None, z0_hr, None, None, None, None, None)
+            wind_scaled = roughness_adjust(None, param_wind, wfmt, None, z0_hr, z0_directional_interpolant, None, None, None, None, None)
         elif wfmt == "blend": 
             # Assumes the owi_ascii and wnd files have the same temporal resolution
             owi_ascii = OwiAsciiWind(args.wback, time_index)
             wnd = WndWind(args.w, metadata, time_index)
             back_wind = owi_ascii.get()
             param_wind = wnd.get()
-            wind_scaled = roughness_adjust(back_wind, param_wind, wfmt, z0_wr, z0_hr, lon_ctr_interpolant, lat_ctr_interpolant, rmw_interpolant, time_ctr_date_0, time_rmw_date_0)
+            wind_scaled = roughness_adjust(back_wind, param_wind, wfmt, z0_wr, z0_hr, z0_directional_interpolant, lon_ctr_interpolant, lat_ctr_interpolant, rmw_interpolant, time_ctr_date_0, time_rmw_date_0)
         if not wind:
             wind = NetcdfOutput(args.o, z0_hr.lon(), z0_hr.lat())
         wind.append(time_index, wind_scaled.date(), wind_scaled.u_velocity(), wind_scaled.v_velocity())
         time_index += 1  
     
     wind.close()
-    print("RICHAMP wind generation complete. Runtime:",str(datetime.now() - start))
+    print("RICHAMP wind generation complete. Runtime:", str(datetime.now() - start), flush=True)
 
 if __name__ == '__main__':
     main()

@@ -62,16 +62,22 @@ fi
 output=RICHAMP_wind
 highres_roughness=$postprocessdir/NLCD_z0_RICHAMP_Reg_Grid.nc
 wind_roughness=$postprocessdir/gfs-roughness.nc
-if [ $tc_forcing == "off"  ]; then
+z0_interp_name=$postprocessdir/z0_interp
+if [ $tc_forcing == "off" ]; then
    wind_back=fort.222
    wind_format="owi-ascii"
 fi
+if [[ -r ${z0_interp_name}.npy ]]; then
+   z0_sv=''
+else
+   z0_sv='-z0sv'
+fi
 if [ $wind_format == "owi-ascii" ]; then
-   $asgs_python $postprocessdir/scale_and_subset.py -o $output -hr $highres_roughness -w $wind_back -wfmt $wind_format -wr $wind_roughness
+   $asgs_python $postprocessdir/scale_and_subset.py -o $output -hr $highres_roughness -w $wind_back -wfmt $wind_format -wr $wind_roughness -z0name $z0_interp_name $z0_sv
 elif [ $wind_format == "wnd" ]; then
-   $asgs_python $postprocessdir/scale_and_subset.py -o $output -hr $highres_roughness -w $wind_param -wfmt $wind_format -winp $wind_inp
+   $asgs_python $postprocessdir/scale_and_subset.py -o $output -hr $highres_roughness -w $wind_param -wfmt $wind_format -winp $wind_inp -z0name $z0_interp_name $z0_sv
 elif [ $wind_format == "blend" ]; then
-   $asgs_python $postprocessdir/scale_and_subset.py -o $output -hr $highres_roughness -w $wind_param -wfmt $wind_format -winp $wind_inp -wback $wind_back -wr $wind_roughness
+   $asgs_python $postprocessdir/scale_and_subset.py -o $output -hr $highres_roughness -w $wind_param -wfmt $wind_format -winp $wind_inp -wback $wind_back -wr $wind_roughness -z0name $z0_interp_name $z0_sv
 fi
 
 # call matlab script to trim depth data to RICHAMP region of interest
