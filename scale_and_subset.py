@@ -512,10 +512,9 @@ def angle_diff(deg1, deg2):
 
 
 def generate_directional_z0_interpolant(lon_grid, lat_grid, z0_hr_hr_grid):
-    # For each point in the RICHAMP grid, create a twelve 30-degree cone in the meteorological wind direction with some length. 
-    # Consider only the discrete z0 points within the cone. 
-    # Use a Gaussian decay function to calculate a weighted z0 value over the whole cone based on the discrete parts.
-    # Use the same weighting and twelve 30-degree cone method as John Ratcliff & Rick Luettich
+    # Generate a defined number of circular sectors ("cones") around each point in the RICHAMP grid.
+    # Use a Gaussian decay function to calculate a weighted z0 value for each cone based on the discrete z0 values within the cone.
+    # Use the same weighting function as John Ratcliff & Rick Luettich.
     from math import ceil, floor
     from numpy import linspace, exp, logical_and, sum, zeros
     from scipy import interpolate
