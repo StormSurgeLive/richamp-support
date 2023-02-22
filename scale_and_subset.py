@@ -112,11 +112,14 @@ class WindData:
 
     
 class Roughness:
-    def __init__(self, filename):
+    def __init__(self, filename, lat, land_rough):
         self.__filename = filename
-        self.__lon = self.__get_lon()
-        self.__lat = self.__get_lat()
-        self.__land_rough = self.__get_land_rough()
+        self.__lon = self.__get_lon() # Subdomains always have full rows, so __lon can be initialized directly from the file
+        self.__lat = lat # lat and land_rough can be subset in subdomains, and if they were set like __lon they couldn't be manually updated without generating a file
+        self.__land_rough = land_rough
+
+    def filename(self):
+        return self.__filename
 
     def lon(self):
         return self.__lon
@@ -134,22 +137,24 @@ class Roughness:
         lon = f.variables["lon"][:] 
         f.close()
         return numpy.array(lon)
+     
         
-    def __get_lat(self):
-        from netCDF4 import Dataset
-        import numpy
-        f = Dataset(self.__filename, 'r')
-        lat = f.variables["lat"][:] 
-        f.close()
-        return numpy.array(lat)
+def Roughness_get_lat(filename):
+    from netCDF4 import Dataset
+    import numpy
+    f = Dataset(filename, 'r')
+    lat = f.variables["lat"][:] 
+    f.close()
+    return numpy.array(lat)
 
-    def __get_land_rough(self):
-        from netCDF4 import Dataset
-        import numpy
-        f = Dataset(self.__filename, 'r')
-        land_rough = f.variables["land_rough"][:][:]
-        f.close() 
-        return numpy.array(land_rough)
+
+def Roughness_get_land_rough(filename):
+    from netCDF4 import Dataset
+    import numpy
+    f = Dataset(filename, 'r')
+    land_rough = f.variables["land_rough"][:][:]
+    f.close() 
+    return numpy.array(land_rough)
     
     
 class NetcdfOutput:
@@ -511,7 +516,7 @@ def angle_diff(deg1, deg2):
     return abs((delta + 180) % 360 - 180)
 
 
-def generate_directional_z0_interpolant(lon_grid, lat_grid, z0_hr_hr_grid):
+def generate_directional_z0_interpolant(lon_grid, lat_grid, z0_hr_hr_grid, sigma, radius):
     # Generate a defined number of circular sectors ("cones") around each point in the RICHAMP grid.
     # Use a Gaussian decay function to calculate a weighted z0 value for each cone based on the discrete z0 values within the cone.
     # Use the same weighting function as John Ratcliff & Rick Luettich.
@@ -521,11 +526,10 @@ def generate_directional_z0_interpolant(lon_grid, lat_grid, z0_hr_hr_grid):
     from pyproj import Geod
     richamp_mid_lat = 41.5917 # degrees N
     richamp_mid_lon = -71.5042 # degrees E
-    cone_radius = 3000 # meters
     cone_width = 30 # degrees
     half_cone_width = cone_width / 2
     approx_grid_resolution = 30 # meters
-    n_fwd_back = ceil(cone_radius / approx_grid_resolution)
+    n_fwd_back = ceil(radius / approx_grid_resolution)
     cone_ctr_angle = linspace(0,360,13)
     wgs84_geod = Geod(ellps='WGS84') 
     _,_,one_deg_lon = wgs84_geod.inv(richamp_mid_lon - 0.5, richamp_mid_lat, richamp_mid_lon + 0.5, richamp_mid_lat)
@@ -544,14 +548,13 @@ def generate_directional_z0_interpolant(lon_grid, lat_grid, z0_hr_hr_grid):
     full_end = 2 * n_fwd_back + 1
     _,_,distance = wgs84_geod.inv(zeros((full_end, full_end)) + lon_grid[mid_lat,mid_lon], zeros((full_end, full_end)) + lat_grid[mid_lat,mid_lon], 
                                   lon_grid[lat_start:lat_end,lon_start:lon_end], lat_grid[lat_start:lat_end,lon_start:lon_end])
-    weight = exp(-distance**2 / (2 * cone_radius**2))
+    weight = exp(-distance**2 / (2 * sigma**2))
     direction = direction_from_uv(one_deg_lon * (lon_grid[mid_lat,mid_lon] - lon_grid[lat_start:lat_end,lon_start:lon_end]),
                                   one_deg_lat * (lat_grid[mid_lat,mid_lon] - lat_grid[lat_start:lat_end,lon_start:lon_end]))
     in_cone_if_in_grid = zeros((full_end, full_end, n_z0), dtype=bool)
     full_cone_weight = zeros((n_z0))
     for k in range(n_z0):
-        in_cone_if_in_grid[:,:,k] = logical_and(distance <= cone_radius, 
-                                                angle_diff(direction, cone_ctr_angle[k]) <= half_cone_width)
+        in_cone_if_in_grid[:,:,k] = logical_and(distance <= radius, angle_diff(direction, cone_ctr_angle[k]) <= half_cone_width)
         in_cone_if_in_grid[n_fwd_back,n_fwd_back,k] = True # the point of interest must be in every cone
         full_cone_weight[k] = sum(weight[in_cone_if_in_grid[:,:,k]])
     # Calculate z0 for each cone at each point
@@ -585,13 +588,25 @@ def generate_directional_z0_interpolant(lon_grid, lat_grid, z0_hr_hr_grid):
     return z0_directional_interpolant
 
   
-def roughness_adjust(back_wind, param_wind, wfmt, z0_wr, z0_hr, z0_directional_interpolant, lon_ctr_interpolant, lat_ctr_interpolant, rmw_interpolant, time_ctr_date_0, time_rmw_date_0):
+def roughness_adjust(subd_inputs):
     # NOTE: Past versions of this function derived z0 from wind stress over water. 
     # That is not feasible performance-wise while also calculating directional z0, so that functionality has been removed.
     # Constant z0 values directly from the appropriate roughness file are now used over water.
     from scipy import interpolate
     from numpy import log, zeros
     z0_param = 0.0033
+    # Split out input parameters from subd_inputs
+    back_wind = subd_inputs[0] 
+    param_wind = subd_inputs[1]
+    wfmt = subd_inputs[2]
+    z0_wr = subd_inputs[3]
+    z0_hr = subd_inputs[4]
+    z0_directional_interpolant = subd_inputs[5] 
+    lon_ctr_interpolant = subd_inputs[6]
+    lat_ctr_interpolant = subd_inputs[7]
+    rmw_interpolant = subd_inputs[8]
+    time_ctr_date_0 = subd_inputs[9]
+    time_rmw_date_0 = subd_inputs[10]
     # Scale input wind up to z_ref using equations 9 & 10 here: https://dr.lib.iastate.edu/handle/20.500.12876/1131
     z_ref = 80 # Per Isaac the logarithmic profile only applies in the near surface layer, which extends roughly 80m up; to verify with lit review
     if (wfmt == "owi-ascii") | (wfmt == "blend"):
@@ -645,7 +660,7 @@ def generate_rmw_interpolant():
     TrackRMW_rows = len(TrackRMW)
     rmw = zeros((TrackRMW_rows,1))
     time_rmw = zeros((TrackRMW_rows,1))
-    for i in range(0,TrackRMW_rows):
+    for i in range(0, TrackRMW_rows):
         rmw[i] = float(TrackRMW.iloc[i,8]) * 1000 # Convert from km to m
         time_rmw_date = datetime(TrackRMW.iloc[i,0], TrackRMW.iloc[i,1], TrackRMW.iloc[i,2], TrackRMW.iloc[i,3], TrackRMW.iloc[i,4], TrackRMW.iloc[i,5])
         if i == 0:
@@ -665,7 +680,7 @@ def generate_ctr_interpolant():
     lat_ctr = zeros((fort22_rows,1))
     lon_ctr = zeros((fort22_rows,1))
     time_ctr = zeros((fort22_rows,1))
-    for i in range(0,fort22_rows):
+    for i in range(0, fort22_rows):
         lat_ctr[i] = float(fort22.iloc[i,6].replace('N',''))/10 # Assumes northern hemisphere
         lon_ctr[i] = -float(fort22.iloc[i,7].replace('W',''))/10 # Assumes western hemisphere
         time_ctr_date = datetime.strptime(str(fort22.iloc[i,2]), '%Y%m%d%H')
@@ -716,17 +731,56 @@ def blend(back_wind, param_wind, lon_ctr_interpolant, lat_ctr_interpolant, rmw_i
     v_blend[back_mask] = back_wind_v_interp[back_mask]
     return WindData(param_wind.date(), param_wind.wind_grid(), u_blend, v_blend)
 
+
+def subd_prep(z0_hr, z0_directional_interpolant, threads):
+    from math import floor
+    from numpy import zeros
+    from scipy import interpolate
+    # Define subdomain indices for multiprocessing; subdomains are comprised of full rows and they are as close to the same size as possible
+    subd_rows = floor(z0_hr.lat().size / threads)
+    subd_start_index = zeros([threads, 1], dtype=int)
+    subd_end_index = zeros([threads, 1], dtype=int)
+    for i in range(0, threads):
+        subd_end_index[i] = subd_rows * (i + 1)
+    for i in range(0, z0_hr.lat().size % threads):
+        subd_end_index[threads - (i + 1)] = subd_end_index[threads - (i + 1)] + (z0_hr.lat().size % threads - i)
+    for i in range(1, threads):
+        subd_start_index[i] = subd_end_index[i - 1]
+    # Calculate subdomain quantities that will be used for each time slice
+    subd_z0_hr = [[] for i in range(threads)]
+    subd_z0_directional_interpolant = [[] for i in range(threads)]
+    for i in range(0, threads):
+        subd_z0_hr[i] = Roughness(z0_hr.filename(), z0_hr.lat()[int(subd_start_index[i]):int(subd_end_index[i])], z0_hr.land_rough()[int(subd_start_index[i]):int(subd_end_index[i]),:])
+        subd_z0_directional_interpolant[i] = interpolate.RegularGridInterpolator((z0_directional_interpolant.grid[0][int(subd_start_index[i]):int(subd_end_index[i])], \
+                                                                                  z0_directional_interpolant.grid[1][:], z0_directional_interpolant.grid[2][:]), \
+                                                                                  z0_directional_interpolant.values[int(subd_start_index[i]):int(subd_end_index[i]),:,:], method='linear')
+    return subd_z0_hr, subd_z0_directional_interpolant, subd_start_index, subd_end_index
     
+
+def subd_restitch_domain(subd_wind_scaled, subd_start_index, subd_end_index, hr_shape, threads):
+    from numpy import zeros
+    u_scaled = zeros(hr_shape)
+    v_scaled = zeros(hr_shape)
+    for i in range(0, threads):
+        u_scaled[int(subd_start_index[i]):int(subd_end_index[i]),:] = subd_wind_scaled[i].u_velocity()
+        v_scaled[int(subd_start_index[i]):int(subd_end_index[i]),:] = subd_wind_scaled[i].v_velocity()
+    return u_scaled, v_scaled
+
+
 def main():
-    import argparse
+    from argparse import ArgumentParser
     from datetime import datetime
-    from numpy import load, meshgrid, save 
+    from multiprocessing import Pool
+    from numpy import load, meshgrid, save
     start = datetime.now()
 
     # Build parser
-    parser = argparse.ArgumentParser(description="Scale and subset input wind data based on high-resolution land roughness")
-    parser.add_argument("-o", metavar="outfile", type=str, help="Name of output file to be created", required=False, default="scaled_wind")
+    parser = ArgumentParser(description="Scale and subset input wind data based on high-resolution land roughness")
     parser.add_argument("-hr", metavar="highres_roughness", type=str, help="High-resolution land roughness file", required=True)
+    parser.add_argument("-o", metavar="outfile", type=str, help="Name of output file to be created", required=False, default="scaled_wind")
+    parser.add_argument("-r", metavar="radius", type=int, help="Sector radius for directional z0 calculation, in meters", required=False, default=3000)
+    parser.add_argument("-sigma", metavar="sigma", type=int, help="Weighting parameter for directional z0 calculation, in meters", required=False, default=1000)
+    parser.add_argument("-t", metavar="threads", type=int, help="Number of threads to use for calculations; must not exceed the number available", required=False, default=1)
     parser.add_argument("-w", metavar="wind", type=str, help="Wind file to be scaled and subsetted", required=True)
     parser.add_argument("-wback", metavar="wind_background", type=str, help="Background wind to be blended with the wind file; required if wfmt is blend", required=False)
     parser.add_argument("-wfmt", metavar="wind_format", type=str, help="Format of the input wind file. Supported values: owi-ascii, wnd, blend", required=True)
@@ -758,53 +812,68 @@ def main():
                 break
         time_step = dt_2 - dt_1
         num_times = int((end_date - start_date) / time_step + 1)
-        z0_wr = Roughness(args.wr)
+        z0_wr = Roughness(args.wr, Roughness_get_lat(args.wr), Roughness_get_land_rough(args.wr))
     elif wfmt == "wnd":
         metadata = WndWindInp(args.winp)
         num_times = metadata.num_times()
     elif wfmt == "blend":
         metadata = WndWindInp(args.winp)
         num_times = metadata.num_times()
-        z0_wr = Roughness(args.wr)
+        z0_wr = Roughness(args.wr, Roughness_get_lat(args.wr), Roughness_get_land_rough(args.wr))
         # Generate blend-specific interpolants used for every time slice
         lon_ctr_interpolant, lat_ctr_interpolant, time_ctr_date_0 = generate_ctr_interpolant()
         rmw_interpolant, time_rmw_date_0 = generate_rmw_interpolant()
     else:
         print("ERROR: Unsupported wind format. Please try again.", flush=True)
         return
-    z0_hr = Roughness(args.hr)
+    z0_hr = Roughness(args.hr, Roughness_get_lat(args.hr), Roughness_get_land_rough(args.hr)) # Done this way so lat and land_rough can be updated later; see class
     lon_grid, lat_grid = meshgrid(z0_hr.lon(), z0_hr.lat())
     
     # Generate or load directional z0 interpolants
     if args.z0sv:
         print("INFO: z0sv is True, so a directional z0 interpolant file will be generated. This will take a while.", flush=True)
         print("INFO: Generating directional z0 interpolant...", flush=True)
-        z0_directional_interpolant = generate_directional_z0_interpolant(lon_grid, lat_grid, z0_hr.land_rough())
+        z0_directional_interpolant = generate_directional_z0_interpolant(lon_grid, lat_grid, z0_hr.land_rough(), args.sigma, args.r)
         save(args.z0name + '.npy', z0_directional_interpolant)
     else:
         print("INFO: Loading directional z0 interpolant...", flush=True)
         z0_directional_interpolant = load(args.z0name + '.npy', allow_pickle=True)[()]
+        
+    # Define subdomains for multiprocessing
+    subd_z0_hr, subd_z0_directional_interpolant, subd_start_index, subd_end_index = subd_prep(z0_hr, z0_directional_interpolant, args.t)
     
     # Scale wind one time slice at a time
     wind = None
     time_index = 0
     while time_index < num_times:
         print("INFO: Processing time slice {:d} of {:d}".format(time_index + 1, num_times), flush=True)
+        pool = Pool(args.t)
+        # Generate inputs for roughness_adjust
         if wfmt == "owi-ascii":
             owi_ascii = OwiAsciiWind(args.w, time_index)
             back_wind = owi_ascii.get()
-            wind_scaled = roughness_adjust(back_wind, None, wfmt, z0_wr, z0_hr, z0_directional_interpolant, None, None, None, None, None)
+            subd_inputs = [[] for i in range(args.t)]
+            for i in range(0, args.t):
+                subd_inputs[i] = [back_wind, None, wfmt, z0_wr, subd_z0_hr[i], subd_z0_directional_interpolant[i], None, None, None, None, None]
         elif wfmt == "wnd":
             wnd = WndWind(args.w, metadata, time_index)
             param_wind = wnd.get()
-            wind_scaled = roughness_adjust(None, param_wind, wfmt, None, z0_hr, z0_directional_interpolant, None, None, None, None, None)
+            for i in range(0, args.t):
+                subd_inputs[i] = [None, param_wind, wfmt, None, subd_z0_hr[i], subd_z0_directional_interpolant[i], None, None, None, None, None]
         elif wfmt == "blend": 
             # Assumes the owi_ascii and wnd files have the same temporal resolution
             owi_ascii = OwiAsciiWind(args.wback, time_index)
             wnd = WndWind(args.w, metadata, time_index)
             back_wind = owi_ascii.get()
             param_wind = wnd.get()
-            wind_scaled = roughness_adjust(back_wind, param_wind, wfmt, z0_wr, z0_hr, z0_directional_interpolant, lon_ctr_interpolant, lat_ctr_interpolant, rmw_interpolant, time_ctr_date_0, time_rmw_date_0)
+            for i in range(0, args.t):
+                subd_inputs[i] = [back_wind, param_wind, wfmt, z0_wr, subd_z0_hr[i], subd_z0_directional_interpolant[i], lon_ctr_interpolant, lat_ctr_interpolant, rmw_interpolant, time_ctr_date_0, time_rmw_date_0]
+        # Call roughness_adjust for all subdomains in parallel
+        subd_wind_scaled = pool.map(roughness_adjust, subd_inputs)
+        pool.close()
+        u_scaled, v_scaled = subd_restitch_domain(subd_wind_scaled, subd_start_index, subd_end_index, z0_hr.land_rough().shape, args.t)
+        wind_scaled = WindData(subd_wind_scaled[0].date(), WindGrid(z0_hr.lon(), z0_hr.lat()), u_scaled, v_scaled)
+        # Write to NetCDF; single-threaded for now to avoid race conditions, as thread-safe NetCDF is complicated
         if not wind:
             wind = NetcdfOutput(args.o, z0_hr.lon(), z0_hr.lat())
         wind.append(time_index, wind_scaled.date(), wind_scaled.u_velocity(), wind_scaled.v_velocity())
