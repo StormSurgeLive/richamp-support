@@ -4,7 +4,7 @@
 #SBATCH --output=uri_post.out
 #SBATCH --error=uri_post.err
 #SBATCH -p lowpri
-#SBATCH -c 4
+#SBATCH -c 8
 #SBATCH --mem=16G
 
 # METGET_API_KEY and METGET_ENDPOINT environment variables must be set in order for
@@ -63,7 +63,7 @@ output=RICHAMP_wind
 highres_roughness=$postprocessdir/NLCD_z0_RICHAMP_Reg_Grid.nc
 wind_roughness=$postprocessdir/gfs-roughness.nc
 z0_interp_name=$postprocessdir/z0_interp
-threads=4 # for hyperthreaded CPUs this should be double the amount of processors; for non-hyperthreaded CPUs this should equal the number of processors
+threads=8 # for hyperthreaded CPUs this should be double the amount of processors; for non-hyperthreaded CPUs this should equal the number of processors
 sigma=1000
 radius=3000
 if [ $tc_forcing == "off" ]; then
