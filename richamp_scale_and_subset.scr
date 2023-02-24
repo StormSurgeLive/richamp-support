@@ -63,7 +63,7 @@ output=RICHAMP_wind
 highres_roughness=$postprocessdir/NLCD_z0_RICHAMP_Reg_Grid.nc
 wind_roughness=$postprocessdir/gfs-roughness.nc
 z0_interp_name=$postprocessdir/z0_interp
-threads=8 # for hyperthreaded CPUs this should be double the amount of processors; for non-hyperthreaded CPUs this should equal the number of processors
+threads=8 # should match the number in the header after -c
 sigma=1000
 radius=3000
 if [ $tc_forcing == "off" ]; then
