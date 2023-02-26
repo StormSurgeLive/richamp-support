@@ -799,11 +799,11 @@ def main():
     while time_index < num_times:
         print("INFO: Processing time slice {:d} of {:d}".format(time_index + 1, num_times), flush=True)
         pool = multiprocessing.Pool(args.t)
+        subd_inputs = [[] for i in range(args.t)]
         # Generate inputs for roughness_adjust
         if wfmt == "owi-ascii":
             owi_ascii = OwiAsciiWind(args.w, time_index)
             back_wind = owi_ascii.get()
-            subd_inputs = [[] for i in range(args.t)]
             for i in range(0, args.t):
                 subd_inputs[i] = [back_wind, None, wfmt, z0_wr, subd_z0_hr[i], subd_z0_directional_interpolant[i], None, None, None, None, None]
         elif wfmt == "wnd":
