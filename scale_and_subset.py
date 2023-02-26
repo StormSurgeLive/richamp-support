@@ -4,7 +4,7 @@
 # Scales OWI ASCII, WND, or blended OWI ASCII + WND winds based on local surface roughness
 # Outputs a value at every grid point in the roughness file
 #
-import argparse, datetime, math, multiprocessing, netCDF4, numpy, pandas, pyproj, scipy
+import argparse, datetime, math, multiprocessing, netCDF4, numpy, pandas, pyproj, scipy.interpolate
 
 class WindGrid:
     def __init__(self, lon, lat):
