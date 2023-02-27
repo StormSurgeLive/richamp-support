@@ -223,7 +223,12 @@ class NetcdfOutput:
         self.__group_main_var_lat[:] = self.__lat
         self.__group_main_var_lon[:] = self.__lon
 
-    def append(self, idx, date, uvel, vvel):
+    def append(self, append_inputs):
+        idx = append_inputs[0]
+        date = append_inputs[1]
+        uvel = append_inputs[2]
+        vvel = append_inputs[3]
+
         delta = (date - self.__base_date)
         minutes = round((delta.days * 86400 + delta.seconds) / 60)
 
@@ -654,8 +659,10 @@ def main():
     parser.add_argument("-sigma", metavar="sigma", type=int,
                         help="Weighting parameter for directional z0 calculation, in meters; will be ignored if z0sv is false", required=False, default=1000)
     parser.add_argument("-t", metavar="threads", type=int,
-                        help="Number of threads to use for calculations; must not exceed the number available", required=False, default=1)
+                        help="Number of threads to use for calculations; must not exceed the number available; total threads = t + wasync", required=False, default=1)
     parser.add_argument("-w", metavar="wind", type=str, help="Wind file to be scaled and subsetted", required=True)
+    parser.add_argument("-wasync", help="Add this flag to begin scaling winds for the next time step while writing the output for the current time step; "
+                        + "writes are NOT thread safe, so only do this if roughness_adjust always takes longer than wind.append; total threads = t + wasync", action='store_true', required=False, default=False)
     parser.add_argument("-wback", metavar="wind_background", type=str,
                         help="Background wind to be blended with the wind file; required if wfmt is blend", required=False)
     parser.add_argument("-wfmt", metavar="wind_format", type=str,
@@ -663,10 +670,10 @@ def main():
     parser.add_argument("-winp", metavar="wind_inp", type=str, help="Wind_Inp.txt metadata file; required if wfmt is wnd or blend", required=False)
     parser.add_argument("-wr", metavar="wind_roughness", type=str,
                         help="Wind-resolution land roughness file; required if wfmt is owi-ascii or blend", required=False)
-    parser.add_argument("-z0sv", help="Add this flag to generate and save off directional z0 interpolants; do this in advance to save time during regular runs",
+    parser.add_argument("-z0sv", help="Add this flag to generate and save off a directional z0 interpolant; do this in advance to save time during regular runs",
                         action='store_true', required=False, default=False)
     parser.add_argument("-z0name", metavar="z0_name", type=str,
-                        help="Name of directional z0 interpolants file; it will be generated if z0sv is True and loaded if z0sv is False", required=False, default='z0_interp')
+                        help="Name of directional z0 interpolant file; it will be generated if z0sv is True and loaded if z0sv is False", required=False, default='z0_interp')
 
     # Read the command line arguments
     args = parser.parse_args()
@@ -728,9 +735,10 @@ def main():
     # Scale wind one time slice at a time
     wind = None
     time_index = 0
+    pool = multiprocessing.Pool(args.t + args.wasync)
     while time_index < num_times:
         print("INFO: Processing time slice {:d} of {:d}".format(time_index + 1, num_times), flush=True)
-        pool = multiprocessing.Pool(args.t)
+
         subd_inputs = [[] for i in range(args.t)]
         # Generate inputs for roughness_adjust
         if wfmt == "owi-ascii":
@@ -754,15 +762,18 @@ def main():
                                   lon_ctr_interpolant, lat_ctr_interpolant, rmw_interpolant, time_ctr_date_0, time_rmw_date_0]
         # Call roughness_adjust for all subdomains in parallel
         subd_wind_scaled = pool.map(roughness_adjust, subd_inputs)
-        pool.close()
         u_scaled, v_scaled = subd_restitch_domain(subd_wind_scaled, subd_start_index, subd_end_index, z0_hr.land_rough().shape, args.t)
         wind_scaled = WindData(subd_wind_scaled[0].date(), WindGrid(z0_hr.lon(), z0_hr.lat()), u_scaled, v_scaled)
-        # Write to NetCDF; single-threaded for now to avoid race conditions, as thread-safe NetCDF is complicated
+        # Write to NetCDF; single-threaded with optional asynchronicity for now, as thread-safe NetCDF is complicated
         if not wind:
             wind = NetcdfOutput(args.o, z0_hr.lon(), z0_hr.lat())
-        wind.append(time_index, wind_scaled.date(), wind_scaled.u_velocity(), wind_scaled.v_velocity())
+        if args.wasync and num_times - time_index > 1:
+            pool.map_async(wind.append, [time_index, wind_scaled.date(), wind_scaled.u_velocity(), wind_scaled.v_velocity()])
+        else:
+            wind.append([time_index, wind_scaled.date(), wind_scaled.u_velocity(), wind_scaled.v_velocity()])
         time_index += 1
 
+    pool.close()
     if (wfmt == "owi-ascii") | (wfmt == "blend"):
         win_file.close()
     wind.close()
