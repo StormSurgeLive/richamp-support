@@ -13,6 +13,7 @@ import numpy
 import pandas
 import pyproj
 import scipy.interpolate
+import threading
 
 
 class WindGrid:
@@ -223,12 +224,7 @@ class NetcdfOutput:
         self.__group_main_var_lat[:] = self.__lat
         self.__group_main_var_lon[:] = self.__lon
 
-    def append(self, append_inputs):
-        idx = append_inputs[0]
-        date = append_inputs[1]
-        uvel = append_inputs[2]
-        vvel = append_inputs[3]
-
+    def append(self, idx, date, uvel, vvel):
         delta = (date - self.__base_date)
         minutes = round((delta.days * 86400 + delta.seconds) / 60)
 
@@ -735,45 +731,45 @@ def main():
     # Scale wind one time slice at a time
     wind = None
     time_index = 0
-    pool = multiprocessing.Pool(args.t + args.wasync)
-    while time_index < num_times:
-        print("INFO: Processing time slice {:d} of {:d}".format(time_index + 1, num_times), flush=True)
+    # The conditional results in a null context manager if writes are synchronous
+    with multiprocessing.Pool(args.t) as pool:
+        while time_index < num_times:
+            print("INFO: Processing time slice {:d} of {:d}".format(time_index + 1, num_times), flush=True)
+            subd_inputs = [[] for i in range(args.t)]
+            # Generate inputs for roughness_adjust
+            if wfmt == "owi-ascii":
+                owi_ascii = OwiAsciiWind(lines, time_index)
+                back_wind = owi_ascii.get()
+                for i in range(0, args.t):
+                    subd_inputs[i] = [back_wind, None, wfmt, z0_wr, subd_z0_hr[i], subd_z0_directional_interpolant[i], None, None, None, None, None]
+            elif wfmt == "wnd":
+                wnd = WndWind(args.w, metadata, time_index)
+                param_wind = wnd.get()
+                for i in range(0, args.t):
+                    subd_inputs[i] = [None, param_wind, wfmt, None, subd_z0_hr[i], subd_z0_directional_interpolant[i], None, None, None, None, None]
+            elif wfmt == "blend":
+                # Assumes the owi_ascii and wnd files have the same temporal resolution
+                owi_ascii = OwiAsciiWind(lines, time_index)
+                wnd = WndWind(args.w, metadata, time_index)
+                back_wind = owi_ascii.get()
+                param_wind = wnd.get()
+                for i in range(0, args.t):
+                    subd_inputs[i] = [back_wind, param_wind, wfmt, z0_wr, subd_z0_hr[i], subd_z0_directional_interpolant[i],
+                                      lon_ctr_interpolant, lat_ctr_interpolant, rmw_interpolant, time_ctr_date_0, time_rmw_date_0]
+            # Call roughness_adjust for all subdomains in parallel
+            subd_wind_scaled = pool.map(roughness_adjust, subd_inputs)
+            u_scaled, v_scaled = subd_restitch_domain(subd_wind_scaled, subd_start_index, subd_end_index, z0_hr.land_rough().shape, args.t)
+            wind_scaled = WindData(subd_wind_scaled[0].date(), WindGrid(z0_hr.lon(), z0_hr.lat()), u_scaled, v_scaled)
+            # Write to NetCDF; single-threaded with optional asynchronicity for now, as thread-safe NetCDF is complicated
+            if not wind:
+                wind = NetcdfOutput(args.o, z0_hr.lon(), z0_hr.lat())
+            if args.wasync and num_times - time_index > 1:
+                threading.Thread(target=wind.append, args=(time_index, wind_scaled.date(),
+                                 wind_scaled.u_velocity(), wind_scaled.v_velocity())).start()
+            else:
+                wind.append(time_index, wind_scaled.date(), wind_scaled.u_velocity(), wind_scaled.v_velocity())
+            time_index += 1
 
-        subd_inputs = [[] for i in range(args.t)]
-        # Generate inputs for roughness_adjust
-        if wfmt == "owi-ascii":
-            owi_ascii = OwiAsciiWind(lines, time_index)
-            back_wind = owi_ascii.get()
-            for i in range(0, args.t):
-                subd_inputs[i] = [back_wind, None, wfmt, z0_wr, subd_z0_hr[i], subd_z0_directional_interpolant[i], None, None, None, None, None]
-        elif wfmt == "wnd":
-            wnd = WndWind(args.w, metadata, time_index)
-            param_wind = wnd.get()
-            for i in range(0, args.t):
-                subd_inputs[i] = [None, param_wind, wfmt, None, subd_z0_hr[i], subd_z0_directional_interpolant[i], None, None, None, None, None]
-        elif wfmt == "blend":
-            # Assumes the owi_ascii and wnd files have the same temporal resolution
-            owi_ascii = OwiAsciiWind(lines, time_index)
-            wnd = WndWind(args.w, metadata, time_index)
-            back_wind = owi_ascii.get()
-            param_wind = wnd.get()
-            for i in range(0, args.t):
-                subd_inputs[i] = [back_wind, param_wind, wfmt, z0_wr, subd_z0_hr[i], subd_z0_directional_interpolant[i],
-                                  lon_ctr_interpolant, lat_ctr_interpolant, rmw_interpolant, time_ctr_date_0, time_rmw_date_0]
-        # Call roughness_adjust for all subdomains in parallel
-        subd_wind_scaled = pool.map(roughness_adjust, subd_inputs)
-        u_scaled, v_scaled = subd_restitch_domain(subd_wind_scaled, subd_start_index, subd_end_index, z0_hr.land_rough().shape, args.t)
-        wind_scaled = WindData(subd_wind_scaled[0].date(), WindGrid(z0_hr.lon(), z0_hr.lat()), u_scaled, v_scaled)
-        # Write to NetCDF; single-threaded with optional asynchronicity for now, as thread-safe NetCDF is complicated
-        if not wind:
-            wind = NetcdfOutput(args.o, z0_hr.lon(), z0_hr.lat())
-        if args.wasync and num_times - time_index > 1:
-            pool.map_async(wind.append, [time_index, wind_scaled.date(), wind_scaled.u_velocity(), wind_scaled.v_velocity()])
-        else:
-            wind.append([time_index, wind_scaled.date(), wind_scaled.u_velocity(), wind_scaled.v_velocity()])
-        time_index += 1
-
-    pool.close()
     if (wfmt == "owi-ascii") | (wfmt == "blend"):
         win_file.close()
     wind.close()
