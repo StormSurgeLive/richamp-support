@@ -1,6 +1,6 @@
 # richamp-support
 
-## ASGS Post-Processing Setup Instructions on Hatteras
+## ASGS Post-Processing Setup Instructions on Hatteras & Unity
 
 NOTE: You should already have set up an ASGS instance before you go through this setup. If you haven’t, do that first.
 
@@ -9,10 +9,10 @@ NOTE: You should already have set up an ASGS instance before you go through this
 3. Run “git clone git@github.com:StormSurgeLive/richamp-support”. This will pull down the latest post-processing code from GitHub. The folder this command creates will henceforth be referred to as the “post-processing directory”.
    - You should have already set up SSH keys for GitHub when you configured ASGS, but if not use “git clone https://github.com/StormSurgeLive/richamp-support” instead. You may also need to do some git configuration if you haven’t used it on hatteras yet. Git should prompt you if so. Just follow the instructions.
    - If you ever need to pull down updates to the code in the future, you can do this via “git pull”.
-4. Copy the following two NetCDFs from /home/joshua_p/postprocess to your richamp-support directory:
+4. Copy the following two NetCDFs from /home/joshua_p/postprocess (Hatteras) or /work/pi_iginis_uri_edu/joshua_port_uri_edu/postprocess (Unity) to your richamp-support directory:
    - gfs-roughness.nc
    - NLCD_z0_RICHAMP_Reg_Grid.nc
-5. Copy the following two files from /projects/ees/dhs-crc/dcrowley/c_PWM/b_RIC_TEST/ to your richamp-support directory:
+5. Copy the following two files from /projects/ees/dhs-crc/dcrowley/c_PWM/b_RIC_TEST (Hatteras) or /work/pi_iginis_uri_edu/joshua_port_uri_edu/postprocess (Unity) to your richamp-support directory:
    - diag_parm.nml
    - windgfdl
 6. From within ASGSH run the following:
