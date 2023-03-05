@@ -411,16 +411,17 @@ def generate_directional_z0_interpolant(lon_grid, lat_grid, z0_hr_hr_grid, sigma
     # Generate a defined number of circular sectors ("cones") around each point in the RICHAMP grid
     # Use a Gaussian decay function to calculate a weighted z0 value for each cone based on the discrete z0 values within the cone
     # Use the same weighting function as John Ratcliff & Rick Luettich
-    richamp_mid_lat = 41.5917  # degrees N
-    richamp_mid_lon = -71.5042  # degrees E
+    overall_mid_lat = (lat_grid[0, 0] + lat_grid[-1, 0]) / 2  # degrees N
+    overall_mid_lon = (lon_grid[0, 0] + lon_grid[0, -1]) / 2  # degrees E
     cone_width = 30  # degrees
     half_cone_width = cone_width / 2
-    approx_grid_resolution = 30  # meters
-    n_fwd_back = math.ceil(radius / approx_grid_resolution)
     cone_ctr_angle = numpy.linspace(0, 360, 13)
     wgs84_geod = pyproj.Geod(ellps='WGS84')
-    _, _, one_deg_lon = wgs84_geod.inv(richamp_mid_lon - 0.5, richamp_mid_lat, richamp_mid_lon + 0.5, richamp_mid_lat)
-    _, _, one_deg_lat = wgs84_geod.inv(richamp_mid_lon, richamp_mid_lat - 0.5, richamp_mid_lon, richamp_mid_lat + 0.5)
+    _, _, approx_grid_resolution = wgs84_geod.inv(lon_grid[0, 0], lat_grid[0, 0], lon_grid[0, 0],
+                                                  lat_grid[1, 0])  # assumes same resolution in lat and lon
+    _, _, one_deg_lon = wgs84_geod.inv(overall_mid_lon - 0.5, overall_mid_lat, overall_mid_lon + 0.5, overall_mid_lat)
+    _, _, one_deg_lat = wgs84_geod.inv(overall_mid_lon, overall_mid_lat - 0.5, overall_mid_lon, overall_mid_lat + 0.5)
+    n_fwd_back = math.ceil(radius / approx_grid_resolution)
     n_lat = len(z0_hr_hr_grid)
     n_lon = len(z0_hr_hr_grid[0])
     n_z0 = len(cone_ctr_angle) - 1  # A row for 360 degrees exists to allow interpolation between 330 and 0, but we don't calculate z0 for it
