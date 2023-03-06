@@ -25,6 +25,10 @@ NOTE: You should already have set up an ASGS instance before you go through this
    - OPENDAPPOST=opendap_post2.sh
    - POSTPROCESS=( richamp_scale_and_subset.sh createOPeNDAPFileList.sh $OPENDAPPOST )
    - postAdditionalFiles=( RICHAMP_fort63.nc RICHAMP_wind.nc )
-9. You are now set up! Just run ASGS as you would normally.
-   - If you need to troubleshoot, refer to uri_post.err and uri_post.out, which will be generated in the ASGS scenario directory, and richamp_scale_and_subset.sh.log, which will be generated in the richamp-support folder.
-   - If you get stuck or find a bug, contact Josh Port (joshua_port@uri.edu). If Josh is unavailable, try reaching out to Dave Ullman (dullman@uri.edu).
+9. (Unity only) Open richamp_scale_and_subset.scr. Make the following changes:
+   - Comment out or remove the "#SBATCH --constraint=hatteras" line
+   - Change the partition from "lowpri" to "uri-cpu"
+   - Update both "module load matlab" commands to use a valid MatLab module on Unity. Use "module avail matlab" to see which versions are available. Note that the MatLab code has only been tested on R2020b, R2021b, and R2022b.
+10. You are now set up! Just run ASGS as you would normally.
+    - If you need to troubleshoot, refer to uri_post.err and uri_post.out, which will be generated in the ASGS scenario directory, and richamp_scale_and_subset.sh.log, which will be generated in the richamp-support folder.
+    - If you get stuck or find a bug, contact Josh Port (joshua_port@uri.edu). If Josh is unavailable, try reaching out to Dave Ullman (dullman@uri.edu).
