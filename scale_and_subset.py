@@ -11,6 +11,7 @@ import multiprocessing
 import netCDF4
 import numpy
 import pandas
+import pickle
 import pyproj
 import scipy.interpolate
 import threading
@@ -778,10 +779,12 @@ def main():
         print("INFO: z0sv is True, so a directional z0 interpolant file will be generated. This will take a while.", flush=True)
         print("INFO: Generating directional z0 interpolant...", flush=True)
         z0_directional_interpolant = generate_directional_z0_interpolant(lon_grid, lat_grid, z0_hr.land_rough(), args.sigma, args.r)
-        numpy.save(args.z0name + '.npy', z0_directional_interpolant)
+        with open(args.z0name + '.pickle', 'wb') as file:
+            pickle.dump(z0_directional_interpolant, file, pickle.HIGHEST_PROTOCOL)
     else:
         print("INFO: Loading directional z0 interpolant...", flush=True)
-        z0_directional_interpolant = numpy.load(args.z0name + '.npy', allow_pickle=True)[()]
+        with open(args.z0name + '.pickle', 'rb') as file:
+            z0_directional_interpolant = pickle.load(file)
 
     # Define subdomains for multiprocessing
     subd_z0_hr, subd_z0_directional_interpolant, subd_start_index, subd_end_index = subd_prep(z0_hr, z0_directional_interpolant, args.t)
