@@ -30,6 +30,7 @@ NOTE: You should already have set up an ASGS instance before you go through this
    - Comment out the "#SBATCH -p uri-cpu" line
    - Comment out the entire "upload file to s3" section near the bottom
 10. (Unity only) Download the latest s3cmd release from https://github.com/s3tools/s3cmd and unpack the s3cmd files into your ~/bin folder. If this folder does not exist, create it.
-11. You are now set up! Just run ASGS as you would normally.
+11. (Unity only) Reach out to Josh Port (joshua_port@uri.edu) for the RICHAMP S3 bucket name, endpoint address, and credentials. Once you have them, run "s3cmd --configure" and use that information to set up s3cmd. If Josh is unavailable, reach out to Kevin Bryan (bryank@uri.edu). 
+12. You are now set up! Just run ASGS as you would normally.
     - If you need to troubleshoot, refer to uri_post.err and uri_post.out, which will be generated in the ASGS scenario directory, and richamp_scale_and_subset.sh.log, which will be generated in the richamp-support folder.
     - If you get stuck or find a bug, contact Josh Port (joshua_port@uri.edu). If Josh is unavailable, try reaching out to Dave Ullman (dullman@uri.edu).
