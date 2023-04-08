@@ -14,16 +14,16 @@ targetScript="richamp_scale_and_subset.scr"
 echo "\"start\" : \"[$(date +'%Y-%h-%d-T%H:%M:%S%z')]\", \"jobid\" : \"${SLURM_JOBID}\"" > $targetScript.start # <-OVERWRITE
 asgs_python=$1  # first parameter passed from richamp_scale_and_subset.sh
 
-declare -A properties
-RUNPROPERTIES=run.properties #PWD should be the SCENARIODIR
-echo "Loading properties."
-# get loadProperties function
-SCRIPTDIR=`sed -n 's/[ ^]*$//;s/path.scriptdir\s*:\s*//p' $RUNPROPERTIES`
-source $SCRIPTDIR/properties.sh
-# load run.properties file into associative array
+#declare -A properties
+#RUNPROPERTIES=run.properties #PWD should be the SCENARIODIR
+#echo "Loading properties."
+## get loadProperties function
+#SCRIPTDIR=`sed -n 's/[ ^]*$//;s/path.scriptdir\s*:\s*//p' $RUNPROPERTIES`
+#source $SCRIPTDIR/properties.sh
+## load run.properties file into associative array
 #loadProperties $RUNPROPERTIES
 #echo "Finished loading properties."
-# get tc forcing status from run.properties
+## get tc forcing status from run.properties
 #tc_forcing=${properties['forcing.tropicalcyclone']}
 
 postprocessdir=$SCRIPTDIR/output/richamp-support
