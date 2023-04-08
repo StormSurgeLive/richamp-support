@@ -21,10 +21,10 @@ echo "Loading properties."
 SCRIPTDIR=`sed -n 's/[ ^]*$//;s/path.scriptdir\s*:\s*//p' $RUNPROPERTIES`
 source $SCRIPTDIR/properties.sh
 # load run.properties file into associative array
-loadProperties $RUNPROPERTIES
-echo "Finished loading properties."
+#loadProperties $RUNPROPERTIES
+#echo "Finished loading properties."
 # get tc forcing status from run.properties
-tc_forcing=${properties['forcing.tropicalcyclone']}
+#tc_forcing=${properties['forcing.tropicalcyclone']}
 
 postprocessdir=$SCRIPTDIR/output/richamp-support
 
