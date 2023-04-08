@@ -28,7 +28,7 @@ asgs_python=$1  # first parameter passed from richamp_scale_and_subset.sh
 
 postprocessdir=$SCRIPTDIR/output/richamp-support
 
-# if TROPICALCYCLONE=on, call URI parametric model and MetGet to get winds; attempt to blend them, but fall back to one or the other if necessary
+## if TROPICALCYCLONE=on, call URI parametric model and MetGet to get winds; attempt to blend them, but fall back to one or the other if necessary
 #if [ $tc_forcing == "on" ]; then
 #   # run URI parametric model
 #   module load matlab/2020b
@@ -77,10 +77,10 @@ else
 fi
 if [ $wind_format == "owi-ascii" ]; then
    $asgs_python $postprocessdir/scale_and_subset.py -o $output -hr $highres_roughness -w $wind_back -wfmt $wind_format -wr $wind_roughness -z0name $z0_interp_name $z0_sv -r $radius -sigma $sigma -t $threads -wasync
-elif [ $wind_format == "wnd" ]; then
-   $asgs_python $postprocessdir/scale_and_subset.py -o $output -hr $highres_roughness -w $wind_param -wfmt $wind_format -winp $wind_inp -z0name $z0_interp_name $z0_sv -r $radius -sigma $sigma -t $threads -wasync
-elif [ $wind_format == "blend" ]; then
-   $asgs_python $postprocessdir/scale_and_subset.py -o $output -hr $highres_roughness -w $wind_param -wfmt "wnd" -winp $wind_inp -wback $wind_back -wbackfmt "owi-ascii" -wbackr $wind_roughness -z0name $z0_interp_name $z0_sv -r $radius -sigma $sigma -t $threads -wasync
+#elif [ $wind_format == "wnd" ]; then
+#   $asgs_python $postprocessdir/scale_and_subset.py -o $output -hr $highres_roughness -w $wind_param -wfmt $wind_format -winp $wind_inp -z0name $z0_interp_name $z0_sv -r $radius -sigma $sigma -t $threads -wasync
+#elif [ $wind_format == "blend" ]; then
+#   $asgs_python $postprocessdir/scale_and_subset.py -o $output -hr $highres_roughness -w $wind_param -wfmt "wnd" -winp $wind_inp -wback $wind_back -wbackfmt "owi-ascii" -wbackr $wind_roughness -z0name $z0_interp_name $z0_sv -r $radius -sigma $sigma -t $threads -wasync
 fi
 
 # call matlab script to trim depth data to RICHAMP region of interest
