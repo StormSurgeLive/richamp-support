@@ -28,16 +28,17 @@ tc_forcing=${properties['forcing.tropicalcyclone']}
 
 postprocessdir=$SCRIPTDIR/output/richamp-support
 
-# if TROPICALCYCLONE=on, call URI parametric model and MetGet to get winds; attempt to blend them, but fall back to one or the other if necessary
+# if TROPICALCYCLONE=on, call MetGet to get winds
+# if all commented code were to be uncommented, the logic becomes: if TROPICALCYCLONE=on, call URI parametric model and MetGet to get winds; attempt to blend them, but fall back to one or the other if necessary
 if [ $tc_forcing == "on" ]; then
 #   # run URI parametric model
-#   module load matlab/2020b
+#   module load matlab
 #   matlab -nodesktop -nodisplay -nosplash -r "addpath $postprocessdir, try, ASGS_fort22_to_PWM_inputs, catch me, fprintf('%s / %s\n',me.identifier,me.message), end, exit"
 #   ln -s $postprocessdir/diag_parm.nml diag_parm.nml
 #   $postprocessdir/windgfdl
-   # pull in metadata for MetGet call
-   wind_param=richamp.wnd
-   wind_inp=Wind_Inp.txt
+#   wind_param=richamp.wnd
+#   wind_inp=Wind_Inp.txt
+   # pull in metadata for MetGet call   
    ## get date range from run.properties
    t_start_raw=${properties['RunStartTime']}
    t_end_raw=${properties['RunEndTime']}
@@ -86,7 +87,7 @@ fi
 # call matlab script to trim depth data to RICHAMP region of interest
 indir=$PWD/  # Matlab script expects trailing slashes
 outdir=$PWD/
-module load matlab/2020b
+module load matlab
 matlab -nodesktop -nodisplay -nosplash -r "addpath $postprocessdir, try, subset_fort63_richamp $indir $outdir, catch me, fprintf('%s / %s\n',me.identifier,me.message), end, exit"
 # check to see if matlab script finished successfully
 if [[ $? == 0 ]]; then
