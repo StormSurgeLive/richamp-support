@@ -21,7 +21,7 @@ NOTE: You should already have set up an ASGS instance before you go through this
    - “export METGET_ENDPOINT=https://api.metget.zachcobell.com”
 7. (Hatteras only) Open your ASGS config file
    - If you don’t know what your ASGS config file is, run “echo $ASGS_CONFIG” via ASGSH.
-8. Add "richamp-support/richamp_scale_and_subset.sh" to the front of the POSTPROCESS list. (Hatteras only) Also add RICHAMP_fort63.nc and RICHAMP_wind.nc to the postAdditionalFiles list. createOPeNDAPFileList.sh and $OPENDAPPOST should already be in the POSTPROCESS list, but if not, add those after richamp_scale_and_subset.sh and add another line above that to set OPENDAPPOST=opendap_post2.sh. Save and close the file. The final configuration might look like this:
+8. Add "richamp-support/richamp_scale_and_subset.sh" to the front of the POSTPROCESS list. (Hatteras only through the end of #8) Also add RICHAMP_fort63.nc and RICHAMP_wind.nc to the postAdditionalFiles list. createOPeNDAPFileList.sh and $OPENDAPPOST should already be in the POSTPROCESS list, but if not, add those after richamp_scale_and_subset.sh and add another line above that to set OPENDAPPOST=opendap_post2.sh. Save and close the file. The final configuration might look like this:
    - OPENDAPPOST=opendap_post2.sh
    - POSTPROCESS=( richamp-support/richamp_scale_and_subset.sh createOPeNDAPFileList.sh $OPENDAPPOST )
    - postAdditionalFiles=( RICHAMP_fort63.nc RICHAMP_wind.nc )
