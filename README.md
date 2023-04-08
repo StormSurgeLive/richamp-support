@@ -25,9 +25,11 @@ NOTE: You should already have set up an ASGS instance before you go through this
    - OPENDAPPOST=opendap_post2.sh
    - POSTPROCESS=( richamp-support/richamp_scale_and_subset.sh createOPeNDAPFileList.sh $OPENDAPPOST )
    - postAdditionalFiles=( RICHAMP_fort63.nc RICHAMP_wind.nc )
-9. (Unity only) Open richamp_scale_and_subset.scr. Make the following changes:
-   - Comment out or remove the "#SBATCH --constraint=hatteras" line
-   - Change the partition from "lowpri" to "uri-cpu"
-10. You are now set up! Just run ASGS as you would normally.
+9. (Hatteras only) Open richamp_scale_and_subset.scr. Make the following changes:
+   - Uncomment the "##SBATCH --constraint=hatteras" and "##SBATCH -p lowpri" lines (i.e. change them from ## to #; one # is still needed)
+   - Comment out the "#SBATCH -p uri-cpu" line
+   - Comment out the entire "upload file to s3" section near the bottom
+10. (Unity only) Download the latest s3cmd release from https://github.com/s3tools/s3cmd and unpack the s3cmd files into your ~/bin folder. If this folder does not exist, create it.
+11. You are now set up! Just run ASGS as you would normally.
     - If you need to troubleshoot, refer to uri_post.err and uri_post.out, which will be generated in the ASGS scenario directory, and richamp_scale_and_subset.sh.log, which will be generated in the richamp-support folder.
     - If you get stuck or find a bug, contact Josh Port (joshua_port@uri.edu). If Josh is unavailable, try reaching out to Dave Ullman (dullman@uri.edu).

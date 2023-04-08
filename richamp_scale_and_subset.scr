@@ -1,9 +1,10 @@
 #!/bin/bash
-#SBATCH --constraint=hatteras
+##SBATCH --constraint=hatteras
 #SBATCH --job-name=uri_post
 #SBATCH --output=uri_post.out
 #SBATCH --error=uri_post.err
-#SBATCH -p lowpri
+##SBATCH -p lowpri
+#SBATCH -p uri-cpu
 #SBATCH -c 8
 #SBATCH --mem=16G
 
@@ -89,6 +90,15 @@ indir=$PWD/  # Matlab script expects trailing slashes
 outdir=$PWD/
 module load matlab
 matlab -nodesktop -nodisplay -nosplash -r "addpath $postprocessdir, try, subset_fort63_richamp $indir $outdir, catch me, fprintf('%s / %s\n',me.identifier,me.message), end, exit"
+
+# upload files to s3
+# TODO: currently this writes new files over existing files; update based on feedback from Chris & Peter 
+bucket=s3://uri-inbre/RICHAMP
+wind_output=$output.nc
+water_output=RICHAMP_fort63.nc
+s3cmd put $wind_output $bucket/$wind_output
+s3cmd put $water_output $bucket/$water_output
+
 # check to see if matlab script finished successfully
 if [[ $? == 0 ]]; then
    echo "\"finish\" : \"[$(date +'%Y-%h-%d-T%H:%M:%S%z')]\", \"jobid\" : \"${SLURM_JOBID}\"" > $targetScript.finish # <-OVERWRITE
