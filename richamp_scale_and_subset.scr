@@ -96,8 +96,8 @@ matlab -nodesktop -nodisplay -nosplash -r "addpath $postprocessdir, try, subset_
 bucket=s3://uri-inbre/RICHAMP
 wind_output=$output.nc
 water_output=RICHAMP_fort63.nc
-s3cmd put $wind_output $bucket/$wind_output
-s3cmd put $water_output $bucket/$water_output
+$HOME/bin/s3cmd put $wind_output $bucket/$wind_output
+$HOME/bin/s3cmd put $water_output $bucket/$water_output
 
 # check to see if matlab script finished successfully
 if [[ $? == 0 ]]; then
