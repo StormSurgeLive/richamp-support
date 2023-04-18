@@ -10,6 +10,7 @@ import math
 import multiprocessing
 import netCDF4
 import numpy
+import os
 import pandas
 import pickle
 import pyproj
@@ -668,6 +669,9 @@ def subd_restitch_domain(subd_wind_scaled, subd_start_index, subd_end_index, hr_
 
 
 def is_valid(args):
+    if os.path.getsize(args.z0name + '.pickle') / args.t > 4294967296:
+        print("WARNING: multiprocessing.pool.map uses pickle protocol 3 and can therefore only serialize objects smaller than 4 GiB. "
+              + "Your subdomain interpolants are likely larger than 4 GiB. If you get an error related to this, use a larger number of threads.", flush=True)
     if args.wfmt == args.wbackfmt:
         print("ERROR: wfmt and wbackfmt cannot match. Please try again.", flush=True)
     elif (args.wfmt != "owi-ascii") & (args.wfmt != "owi-netcdf") & (args.wfmt != "wnd"):
@@ -796,6 +800,7 @@ def main():
         while time_index < num_times:
             print("INFO: Processing time slice {:d} of {:d}".format(time_index + 1, num_times), flush=True)
             subd_inputs = [[] for i in range(args.t)]
+            subd_wind_scaled = [[] for i in range(args.t)]
             # Generate inputs for roughness_adjust
             if args.wfmt == "owi-ascii":
                 input_wind = owi_ascii.get(time_index)
@@ -815,8 +820,9 @@ def main():
                 for i in range(0, args.t):
                     subd_inputs[i] = [input_wind, None, args.wfmt, None, z0_wr, None, subd_z0_hr[i],
                                       subd_z0_directional_interpolant[i], None, None, None, None, None]
-            # Call roughness_adjust for all subdomains in parallel
-            subd_wind_scaled = pool.map(roughness_adjust, subd_inputs)
+            # Call roughness_adjust for each subdomain individually; multiprocessing.pool.map uses pickle protocol 3, which limits inputs to 4 GiB
+            for i in range(0, args.t):
+                subd_wind_scaled[i] = pool.map(roughness_adjust, [subd_inputs[i]])[0]
             u_scaled, v_scaled = subd_restitch_domain(subd_wind_scaled, subd_start_index, subd_end_index, z0_hr.land_rough().shape, args.t)
             wind_scaled = WindData(subd_wind_scaled[0].date(), WindGrid(z0_hr.lon(), z0_hr.lat()), u_scaled, v_scaled)
             # Write to NetCDF; single-threaded with optional asynchronicity for now, as thread-safe NetCDF is complicated
