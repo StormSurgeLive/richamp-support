@@ -31,9 +31,9 @@ NOTE: You should already have set up an ASGS instance before you go through this
    - Comment out the entire "upload file to s3" section near the bottom
    - Either update output_dir to a directory to which the output files should be copied, or comment out the relevant cp command if you don't need the files to be copied
 10. (Unity only, optional) Download the latest s3cmd release from https://github.com/s3tools/s3cmd and unpack the s3cmd files into your ~/bin folder. If this folder does not exist, create it.
-   - Only necessary if you wish to upload files to an S3 bucket, which can be configured via the commented-out code in richamp_scale_and_subset.scr.
+    - Only necessary if you wish to upload files to an S3 bucket, which can be configured via the commented-out code in richamp_scale_and_subset.scr.
 11. (Unity only, optional) Reach out to Josh Port (joshua_port@uri.edu) for the RICHAMP S3 bucket name, endpoint address, and credentials. If Josh is unavailable, reach out to Kevin Bryan (bryank@uri.edu). Once you have them, run "s3cmd --configure" and use that information to set up s3cmd. Use no encryption & password and HTTPS. 
-   - Only necessary if you wish to upload files to an S3 bucket, which can be configured via the commented-out code in richamp_scale_and_subset.scr.
+    - Only necessary if you wish to upload files to an S3 bucket, which can be configured via the commented-out code in richamp_scale_and_subset.scr.
 12. You are now set up! Just run ASGS as you would normally.
-   - If you need to troubleshoot, refer to uri_post.err and uri_post.out, which will be generated in the ASGS scenario directory, and richamp_scale_and_subset.sh.log, which will be generated in the richamp-support folder.
-   - If you get stuck or find a bug, contact Josh Port (joshua_port@uri.edu). If Josh is unavailable, try reaching out to Dave Ullman (dullman@uri.edu).
+    - If you need to troubleshoot, refer to uri_post.err and uri_post.out, which will be generated in the ASGS scenario directory, and richamp_scale_and_subset.sh.log, which will be generated in the richamp-support folder.
+    - If you get stuck or find a bug, contact Josh Port (joshua_port@uri.edu). If Josh is unavailable, try reaching out to Dave Ullman (dullman@uri.edu).
