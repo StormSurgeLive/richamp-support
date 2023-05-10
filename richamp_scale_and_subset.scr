@@ -8,6 +8,8 @@
 #SBATCH -c 8
 #SBATCH --mem=16G
 #SBATCH -t 06:00:00
+##SBATCH --reservation=richamp
+##SBATCH --partitionname=uri-richamp
 
 # METGET_API_KEY and METGET_ENDPOINT environment variables must be set in order for
 # get_metget_data.py to succeed
