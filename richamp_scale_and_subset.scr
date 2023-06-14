@@ -104,12 +104,14 @@ matlab -nodesktop -nodisplay -nosplash -r "addpath $postprocessdir, try, subset_
 wind_output=$output.nc
 water_output=RICHAMP_fort63.nc
 precip_output=$precip_filename.nc
+track_file=fort.22
 output_dir=/work/pi_iginis_uri_edu/RICHAMP/pp_files
-cp $wind_output $water_output $precip_output $output_dir
+cp $wind_output $water_output $precip_output $track_file $output_dir
 #bucket=s3://uri-inbre/RICHAMP
 #$HOME/bin/s3cmd put $wind_output $bucket/$wind_output
 #$HOME/bin/s3cmd put $water_output $bucket/$water_output
 #$HOME/bin/s3cmd put $precip_output $bucket/$precip_output
+#$HOME/bin/s3cmd put $track_file $bucket/$track_file
 
 # check to see if matlab script finished successfully
 if [[ $? == 0 ]]; then
