@@ -29,6 +29,7 @@ loadProperties $RUNPROPERTIES
 echo "Finished loading properties."
 # get tc forcing status from run.properties
 tc_forcing=${properties['forcing.tropicalcyclone']}
+ENSTORM=${properties['asgs.enstorm']} # It's possible this is already set at the system level, but this doesn't hurt
 
 postprocessdir=$SCRIPTDIR/output/richamp-support
 
@@ -44,7 +45,7 @@ t_end=${t_end_raw:0:4}-${t_end_raw:4:2}-${t_end_raw:6:2}" "${t_end_raw:8:2}:${t_
 # if all commented code were to be uncommented, the logic becomes: if TROPICALCYCLONE=on, call URI parametric model and MetGet to get winds; attempt to blend them, but fall back to one or the other if necessary
 if [ $tc_forcing == "on" ]; then
 #   # run URI parametric model
-#   module load matlab
+#   module load matlab/r2021b
 #   matlab -nodesktop -nodisplay -nosplash -r "addpath $postprocessdir, try, ASGS_fort22_to_PWM_inputs, catch me, fprintf('%s / %s\n',me.identifier,me.message), end, exit"
 #   ln -s $postprocessdir/diag_parm.nml diag_parm.nml
 #   $postprocessdir/windgfdl
@@ -93,11 +94,12 @@ if [ $wind_format == "owi-ascii" ]; then
 #   $asgs_python $postprocessdir/scale_and_subset.py -o $output -hr $highres_roughness -w $wind_param -wfmt "wnd" -winp $wind_inp -wback $wind_back -wbackfmt "owi-ascii" -wbackr $wind_roughness -z0name $z0_interp_name $z0_sv -r $radius -sigma $sigma -t $threads -wasync
 fi
 
-# call matlab script to trim depth data to RICHAMP region of interest
+# call matlab scripts to trim depth data to RICHAMP region of interest and to generate a simple max inundation plot
 indir=$PWD/  # Matlab script expects trailing slashes
 outdir=$PWD/
-module load matlab
-matlab -nodesktop -nodisplay -nosplash -r "addpath $postprocessdir, try, subset_fort63_richamp $indir $outdir, catch me, fprintf('%s / %s\n',me.identifier,me.message), end, exit"
+nc_rough=$postprocessdir/NLCD_z0_RICHAMP_Reg_Grid.nc
+module load matlab/r2021b
+matlab -nodesktop -nodisplay -nosplash -r "addpath $postprocessdir, try, subset_fort63_richamp $indir $outdir, plot_max_inundation $indir $outdir $nc_rough $ENSTORM, catch me, fprintf('%s / %s\n',me.identifier,me.message), end, exit"
 
 # move files to a consistent location for dashboarding team 
 # s3 upload writes new files over existing files; currently disabled in favor of using a consistent folder on unity for speed reasons
@@ -105,8 +107,12 @@ wind_output=$output.nc
 water_output=RICHAMP_fort63.nc
 precip_output=$precip_filename.nc
 track_file=fort.22
-output_dir=/work/pi_iginis_uri_edu/RICHAMP/pp_files
-cp $wind_output $water_output $precip_output $track_file $output_dir
+max_inund_plot=RICHAMP_max_inundation.png
+output_dir=/work/pi_iginis_uri_edu/RICHAMP/pp_files_2/$ENSTORM
+cp $wind_output $water_output $precip_output $max_inund_plot $output_dir
+if [ $tc_forcing == "on" ]; then
+   cp $track_file $output_dir
+fi
 #bucket=s3://uri-inbre/RICHAMP
 #$HOME/bin/s3cmd put $wind_output $bucket/$wind_output
 #$HOME/bin/s3cmd put $water_output $bucket/$water_output

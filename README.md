@@ -30,7 +30,7 @@ NOTE: You should already have set up an ASGS instance before you go through this
    - Comment out the "#SBATCH -p uri-cpu" line
    - Comment out the entire "upload file to s3" section near the bottom
    - Either update output_dir to a directory to which the output files should be copied, or comment out the relevant cp command if you don't need the files to be copied
-10. (Unity only) First, run "module avail matlab" and take not of the available versions. Open richamp_scale_and_subset.scr. Update "module load matlab" to "module load matlab/[VERSION]" in both places it occurs.
+10. (Unity only) First, run "module avail matlab" and take not of the available versions. Open richamp_scale_and_subset.scr. If needed, update the Matlab [VERSION] in  "module load matlab/[VERSION]" to an existing module version everywhere it occurs in the script.
     - The post-processing code has been tested on r2021b and r2022b. If neither of these versions exists, feel free to try another version. Just be aware that you may need to make updates to the relevant .m files if you encounter errors using untested versions of Matlab.
 12. (Unity only, optional) Download the latest s3cmd release from https://github.com/s3tools/s3cmd and unpack the s3cmd files into your ~/bin folder. If this folder does not exist, create it.
     - Only necessary if you wish to upload files to an S3 bucket, which can be configured via the commented-out code in richamp_scale_and_subset.scr.
