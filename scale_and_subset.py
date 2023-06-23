@@ -95,8 +95,8 @@ class WindGrid:
 
     @staticmethod
     def interpolate_to_grid(original_grid, original_data, new_grid):
-        func = scipy.interpolate.interp2d(original_grid.lon1d(), original_grid.lat1d(), original_data, kind='linear')
-        return func(new_grid.lon1d(), new_grid.lat1d())
+        func = scipy.interpolate.RectBivariateSpline(original_grid.lat1d(), original_grid.lon1d(), original_data, kx=1, ky=1)
+        return func(new_grid.lat1d(), new_grid.lon1d())
 
 
 class WindData:
@@ -528,10 +528,10 @@ def roughness_adjust(subd_inputs):
     else:
         wind_z_ref = input_wind_z_ref
     # Interpolate wind_z_ref to z0_hr resolution
-    u_interpolant = scipy.interpolate.interp2d(wind_z_ref.wind_grid().lon1d(), wind_z_ref.wind_grid().lat1d(), wind_z_ref.u_velocity(), kind='linear')
-    u_z_ref_hr_grid = u_interpolant(z0_hr.lon(), z0_hr.lat())
-    v_interpolant = scipy.interpolate.interp2d(wind_z_ref.wind_grid().lon1d(), wind_z_ref.wind_grid().lat1d(), wind_z_ref.v_velocity(), kind='linear')
-    v_z_ref_hr_grid = v_interpolant(z0_hr.lon(), z0_hr.lat())
+    u_interpolant = scipy.interpolate.RectBivariateSpline(wind_z_ref.wind_grid().lat1d(), wind_z_ref.wind_grid().lon1d(), wind_z_ref.u_velocity(), kx=1, ky=1)
+    u_z_ref_hr_grid = u_interpolant(z0_hr.lat(), z0_hr.lon())
+    v_interpolant = scipy.interpolate.RectBivariateSpline(wind_z_ref.wind_grid().lat1d(), wind_z_ref.wind_grid().lon1d(), wind_z_ref.v_velocity(), kx=1, ky=1)
+    v_z_ref_hr_grid = v_interpolant(z0_hr.lat(), z0_hr.lon())
     del u_interpolant, v_interpolant
     # Modify z0 based on directional roughness
     z0_hr_grid = WindGrid(z0_hr.lon(), z0_hr.lat())
@@ -543,8 +543,8 @@ def roughness_adjust(subd_inputs):
 
 def wr_to_w(z0, wind):
     # Interpolate z0 to the resolution of the corresponding wind file just in case their resolutions differ
-    z0_wr_interpolant = scipy.interpolate.interp2d(z0.lon(), z0.lat(), z0.land_rough(), kind='linear')
-    return z0_wr_interpolant(wind.wind_grid().lon1d(), wind.wind_grid().lat1d())
+    z0_wr_interpolant = scipy.interpolate.RectBivariateSpline(z0.lat(), z0.lon(), z0.land_rough(), kx=1, ky=1)
+    return z0_wr_interpolant(wind.wind_grid().lat1d(), wind.wind_grid().lon1d())
 
 
 def ten_to_zref(z0, wind):
@@ -601,10 +601,10 @@ def generate_ctr_interpolant():
 
 def blend(param_wind, back_wind, lon_ctr_interpolant, lat_ctr_interpolant, rmw_interpolant, time_ctr_date_0, time_rmw_date_0):
     # Interpolate back_wind to the param_wind spatial resolution (temporal is assumed to be the same)
-    u_interpolant = scipy.interpolate.interp2d(back_wind.wind_grid().lon1d(), back_wind.wind_grid().lat1d(), back_wind.u_velocity(), kind='linear')
-    back_wind_u_interp = u_interpolant(param_wind.wind_grid().lon1d(), param_wind.wind_grid().lat1d())
-    v_interpolant = scipy.interpolate.interp2d(back_wind.wind_grid().lon1d(), back_wind.wind_grid().lat1d(), back_wind.v_velocity(), kind='linear')
-    back_wind_v_interp = v_interpolant(param_wind.wind_grid().lon1d(), param_wind.wind_grid().lat1d())
+    u_interpolant = scipy.interpolate.RectBivariateSpline(back_wind.wind_grid().lat1d(), back_wind.wind_grid().lon1d(), back_wind.u_velocity(), kx=1, ky=1)
+    back_wind_u_interp = u_interpolant(param_wind.wind_grid().lat1d(), param_wind.wind_grid().lon1d())
+    v_interpolant = scipy.interpolate.RectBivariateSpline(back_wind.wind_grid().lat1d(), back_wind.wind_grid().lon1d(), back_wind.v_velocity(), kx=1, ky=1)
+    back_wind_v_interp = v_interpolant(param_wind.wind_grid().lat1d(), param_wind.wind_grid().lon1d())
     # Determine storm center location at param_wind.date()
     int_param_wind_date = (param_wind.date() - time_ctr_date_0).total_seconds()
     lon_ctr_interp = lon_ctr_interpolant(int_param_wind_date)
@@ -669,9 +669,10 @@ def subd_restitch_domain(subd_wind_scaled, subd_start_index, subd_end_index, hr_
 
 
 def is_valid(args):
-    if os.path.getsize(args.z0name + '.pickle') / args.t > 4294967296:
-        print("WARNING: multiprocessing.pool.map uses pickle protocol 3 and can therefore only serialize objects smaller than 4 GiB. "
-              + "Your subdomain interpolants are likely larger than 4 GiB. If you get an error related to this, use a larger number of threads.", flush=True)
+    if not args.z0sv:
+        if os.path.getsize(args.z0name + '.pickle') / args.t > 4294967296:
+            print("WARNING: multiprocessing.pool.map uses pickle protocol 3 and can therefore only serialize objects smaller than 4 GiB. "
+                + "Your subdomain interpolants are likely larger than 4 GiB. If you get an error related to this, use a larger number of threads.", flush=True)
     if args.wfmt == args.wbackfmt:
         print("ERROR: wfmt and wbackfmt cannot match. Please try again.", flush=True)
     elif (args.wfmt != "owi-ascii") & (args.wfmt != "owi-netcdf") & (args.wfmt != "wnd"):
