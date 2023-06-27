@@ -107,11 +107,12 @@ wind_output=$output.nc
 water_output=RICHAMP_fort63.nc
 precip_output=$precip_filename.nc
 track_file=fort.22
+advisory=../index-at.xml
 max_inund_plot=RICHAMP_max_inundation.png
 output_dir=/work/pi_iginis_uri_edu/RICHAMP/pp_files_2/$ENSTORM
 cp $wind_output $water_output $precip_output $max_inund_plot $output_dir
 if [ $tc_forcing == "on" ]; then
-   cp $track_file $output_dir
+   cp $track_file $advisory $output_dir
 fi
 #bucket=s3://uri-inbre/RICHAMP
 #$HOME/bin/s3cmd put $wind_output $bucket/$wind_output
