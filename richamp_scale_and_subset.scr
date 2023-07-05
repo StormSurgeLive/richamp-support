@@ -30,6 +30,9 @@ echo "Finished loading properties."
 # get tc forcing status from run.properties
 tc_forcing=${properties['forcing.tropicalcyclone']}
 ENSTORM=${properties['asgs.enstorm']} # It's possible this is already set at the system level, but this doesn't hurt
+RSSSITE=${properties['forcing.tropicalcyclone.forecast.rsssite']} # Ditto
+FDIR=${properties['forcing.tropicalcyclone.forecast.path.fdir']} # Ditto
+ADVISDIR=${properties['asgs.path.advisdir']} # Ditto
 
 postprocessdir=$SCRIPTDIR/output/richamp-support
 
@@ -45,8 +48,9 @@ t_end=${t_end_raw:0:4}-${t_end_raw:4:2}-${t_end_raw:6:2}" "${t_end_raw:8:2}:${t_
 # if all commented code were to be uncommented, the logic becomes: if TROPICALCYCLONE=on, call URI parametric model and MetGet to get winds; attempt to blend them, but fall back to one or the other if necessary
 if [ $tc_forcing == "on" ]; then
 #   # run URI parametric model
-#   module load matlab/r2021b
-#   matlab -nodesktop -nodisplay -nosplash -r "addpath $postprocessdir, try, ASGS_fort22_to_PWM_inputs, catch me, fprintf('%s / %s\n',me.identifier,me.message), end, exit"
+   track_only=1 # set to 0 and uncomment the rest of the code in this block to run with the parametric model
+   module load matlab/r2021b
+   matlab -nodesktop -nodisplay -nosplash -r "addpath $postprocessdir, try, ASGS_fort22_to_PWM_inputs $track_only, catch me, fprintf('%s / %s\n',me.identifier,me.message), end, exit"
 #   ln -s $postprocessdir/diag_parm.nml diag_parm.nml
 #   $postprocessdir/windgfdl
 #   wind_param=richamp.wnd
@@ -106,13 +110,20 @@ matlab -nodesktop -nodisplay -nosplash -r "addpath $postprocessdir, try, subset_
 wind_output=$output.nc
 water_output=RICHAMP_fort63.nc
 precip_output=$precip_filename.nc
-track_file=fort.22
-advisory=../index-at.xml
 max_inund_plot=RICHAMP_max_inundation.png
+metadata=run.properties
 output_dir=/work/pi_iginis_uri_edu/RICHAMP/pp_files_2/$ENSTORM
-cp $wind_output $water_output $precip_output $max_inund_plot $output_dir
+cp $wind_output $water_output $precip_output $max_inund_plot $metadata $output_dir
 if [ $tc_forcing == "on" ]; then
-   cp $track_file $advisory $output_dir
+   shapefile1='Track.shp'
+   shapefile2='Track.shx'
+   shapefile3='Track.dbf'
+   if [ $RSSSITE == "filesystem" ]; then
+      advisory=$FDIR/index-at.xml
+   else
+      advisory=$ADVISDIR/index-at.xml
+   fi
+   cp $shapefile1 $shapefile2 $shapefile3 $advisory $output_dir
 fi
 #bucket=s3://uri-inbre/RICHAMP
 #$HOME/bin/s3cmd put $wind_output $bucket/$wind_output
