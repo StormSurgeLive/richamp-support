@@ -5,7 +5,7 @@
 #SBATCH --error=uri_post.err
 ##SBATCH -p lowpri
 #SBATCH -p uri-cpu
-#SBATCH -c 8
+#SBATCH -c 4
 #SBATCH --mem=16G
 #SBATCH -t 06:00:00
 ##SBATCH --reservation=richamp
@@ -78,7 +78,7 @@ output=RICHAMP_wind
 highres_roughness=$postprocessdir/NLCD_z0_RICHAMP_Reg_Grid.nc
 wind_roughness=$postprocessdir/gfs-roughness.nc
 z0_interp_name=$postprocessdir/z0_interp
-threads=7 # $threads + wasync = the number in the header after -c
+threads=3 # $threads + wasync = the number in the header after -c
 sigma=1000
 radius=3000
 if [ $tc_forcing == "off" ]; then

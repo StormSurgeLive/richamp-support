@@ -5,12 +5,11 @@
 # Outputs a value at every grid point in the roughness file
 #
 import argparse
+import concurrent.futures
 import datetime
 import math
-import multiprocessing
 import netCDF4
 import numpy
-import os
 import pandas
 import pickle
 import pyproj
@@ -226,10 +225,12 @@ class NetcdfOutput:
         self.__group_main_var_lat[:] = self.__lat
         self.__group_main_var_lon[:] = self.__lon
 
-    def append(self, idx, date, uvel, vvel):
+    def append(self, idx, date, uvel, vvel, lock):
+        if lock:
+            lock.acquire()
+
         delta = (date - self.__base_date)
         minutes = round((delta.days * 86400 + delta.seconds) / 60)
-
         delta_unix = (date - self.__base_date_unix)
         seconds = round(delta_unix.days * 86400 + delta_unix.seconds)
 
@@ -239,6 +240,9 @@ class NetcdfOutput:
         # self.__group_main_var_v10[idx, :, :] = vvel
         self.__group_main_var_spd[idx, :, :] = magnitude_from_uv(uvel, vvel)
         self.__group_main_var_dir[idx, :, :] = dir_met_to_and_from_math(direction_from_uv(uvel, vvel))
+
+        if lock:
+            lock.release()
 
     def close(self):
         self.__nc.close()
@@ -528,9 +532,11 @@ def roughness_adjust(subd_inputs):
     else:
         wind_z_ref = input_wind_z_ref
     # Interpolate wind_z_ref to z0_hr resolution
-    u_interpolant = scipy.interpolate.RectBivariateSpline(wind_z_ref.wind_grid().lat1d(), wind_z_ref.wind_grid().lon1d(), wind_z_ref.u_velocity(), kx=1, ky=1)
+    u_interpolant = scipy.interpolate.RectBivariateSpline(wind_z_ref.wind_grid(
+    ).lat1d(), wind_z_ref.wind_grid().lon1d(), wind_z_ref.u_velocity(), kx=1, ky=1)
     u_z_ref_hr_grid = u_interpolant(z0_hr.lat(), z0_hr.lon())
-    v_interpolant = scipy.interpolate.RectBivariateSpline(wind_z_ref.wind_grid().lat1d(), wind_z_ref.wind_grid().lon1d(), wind_z_ref.v_velocity(), kx=1, ky=1)
+    v_interpolant = scipy.interpolate.RectBivariateSpline(wind_z_ref.wind_grid(
+    ).lat1d(), wind_z_ref.wind_grid().lon1d(), wind_z_ref.v_velocity(), kx=1, ky=1)
     v_z_ref_hr_grid = v_interpolant(z0_hr.lat(), z0_hr.lon())
     del u_interpolant, v_interpolant
     # Modify z0 based on directional roughness
@@ -601,9 +607,11 @@ def generate_ctr_interpolant():
 
 def blend(param_wind, back_wind, lon_ctr_interpolant, lat_ctr_interpolant, rmw_interpolant, time_ctr_date_0, time_rmw_date_0):
     # Interpolate back_wind to the param_wind spatial resolution (temporal is assumed to be the same)
-    u_interpolant = scipy.interpolate.RectBivariateSpline(back_wind.wind_grid().lat1d(), back_wind.wind_grid().lon1d(), back_wind.u_velocity(), kx=1, ky=1)
+    u_interpolant = scipy.interpolate.RectBivariateSpline(back_wind.wind_grid(
+    ).lat1d(), back_wind.wind_grid().lon1d(), back_wind.u_velocity(), kx=1, ky=1)
     back_wind_u_interp = u_interpolant(param_wind.wind_grid().lat1d(), param_wind.wind_grid().lon1d())
-    v_interpolant = scipy.interpolate.RectBivariateSpline(back_wind.wind_grid().lat1d(), back_wind.wind_grid().lon1d(), back_wind.v_velocity(), kx=1, ky=1)
+    v_interpolant = scipy.interpolate.RectBivariateSpline(back_wind.wind_grid(
+    ).lat1d(), back_wind.wind_grid().lon1d(), back_wind.v_velocity(), kx=1, ky=1)
     back_wind_v_interp = v_interpolant(param_wind.wind_grid().lat1d(), param_wind.wind_grid().lon1d())
     # Determine storm center location at param_wind.date()
     int_param_wind_date = (param_wind.date() - time_ctr_date_0).total_seconds()
@@ -662,32 +670,30 @@ def subd_prep(z0_hr, z0_directional_interpolant, threads):
 def subd_restitch_domain(subd_wind_scaled, subd_start_index, subd_end_index, hr_shape, threads):
     u_scaled = numpy.zeros(hr_shape)
     v_scaled = numpy.zeros(hr_shape)
-    for i in range(0, threads):
-        u_scaled[int(subd_start_index[i]):int(subd_end_index[i]), :] = subd_wind_scaled[i].u_velocity()
-        v_scaled[int(subd_start_index[i]):int(subd_end_index[i]), :] = subd_wind_scaled[i].v_velocity()
-    return u_scaled, v_scaled
+    for i, subd in enumerate(subd_wind_scaled):
+        u_scaled[int(subd_start_index[i]):int(subd_end_index[i]), :] = subd.u_velocity()
+        v_scaled[int(subd_start_index[i]):int(subd_end_index[i]), :] = subd.v_velocity()
+        if i == 0:
+            date = subd.date()
+    return u_scaled, v_scaled, date
 
 
 def is_valid(args):
-    if not args.z0sv:
-        if os.path.getsize(args.z0name + '.pickle') / args.t > 4294967296:
-            print("WARNING: multiprocessing.pool.map uses pickle protocol 3 and can therefore only serialize objects smaller than 4 GiB. "
-                + "Your subdomain interpolants are likely larger than 4 GiB. If you get an error related to this, use a larger number of threads.", flush=True)
     if args.wfmt == args.wbackfmt:
         print("ERROR: wfmt and wbackfmt cannot match. Please try again.", flush=True)
-    elif (args.wfmt != "owi-ascii") & (args.wfmt != "owi-netcdf") & (args.wfmt != "wnd"):
+    elif args.wfmt != "owi-ascii" and args.wfmt != "owi-netcdf" and args.wfmt != "wnd":
         print("ERROR: Unsupported wind format. Please try again.", flush=True)
-    elif (args.wback is not None) & (args.wbackfmt != "owi-ascii") & (args.wbackfmt != "owi-netcdf"):
+    elif args.wback is not None and args.wbackfmt != "owi-ascii" and args.wbackfmt != "owi-netcdf":
         print("ERROR: Unsupported background wind format. Please try again.", flush=True)
-    elif (args.wback is not None) & (args.wfmt != "wnd"):
+    elif args.wback is not None and args.wfmt != "wnd":
         print("ERROR: wfmt must be wnd if wback is provided. Please try again.", flush=True)
-    elif (args.wbackfmt is None) & (args.wback is not None):
+    elif args.wbackfmt is None and args.wback is not None:
         print("ERROR: wbackfmt is required if wback is provided. Please try again.", flush=True)
-    elif (args.wr is None) & ((args.wfmt == "owi-ascii") | (args.wfmt == "owi-netcdf")):
+    elif args.wr is None and (args.wfmt == "owi-ascii" or args.wfmt == "owi-netcdf"):
         print("ERROR: wr is required when wfmt is owi-ascii or owi-netcdf. Please try again.", flush=True)
-    elif (args.wbackr is None) & ((args.wbackfmt == "owi-ascii") | (args.wbackfmt == "owi-netcdf")):
+    elif args.wbackr is None and (args.wbackfmt == "owi-ascii" or args.wbackfmt == "owi-netcdf"):
         print("ERROR: wbackr is required when wbackfmt is owi-ascii or owi-netcdf. Please try again.", flush=True)
-    elif (args.winp is None) & (args.wfmt == "wnd"):
+    elif args.winp is None and args.wfmt == "wnd":
         print("ERROR: winp is required if wfmt is wnd. Please try again.", flush=True)
     else:
         return True
@@ -706,7 +712,8 @@ def build_parser():
                         help="Number of threads to use for calculations; must not exceed the number available; total threads = t + wasync", required=False, default=1)
     parser.add_argument("-w", metavar="wind", type=str, help="Wind file to be scaled and subsetted", required=True)
     parser.add_argument("-wasync", help="Add this flag to begin scaling winds for the next time step while writing the output for the current time step; "
-                        + "writes are NOT thread safe, so only do this if roughness_adjust always takes longer than wind.append; total threads = t + wasync", action='store_true', required=False, default=False)
+                        + "writes run in series and are thread safe, but peak memory use may be high if write times are slower than computation times; "
+                        + "total threads = t + wasync", action='store_true', required=False, default=False)
     parser.add_argument("-wback", metavar="wind_background", type=str,
                         help="Background wind to be blended with the wind file; if included, w and wback will be blended", required=False)
     parser.add_argument("-wbackfmt", metavar="wback_format", type=str,
@@ -797,11 +804,14 @@ def main():
     # Scale wind one time slice at a time
     wind = None
     time_index = 0
-    with multiprocessing.Pool(args.t) as pool:
-        while time_index < num_times:
+    if args.wasync:
+        write_thread = [[] for i in range(num_times)]
+        lock = threading.Lock()
+        did_warn = False
+    with concurrent.futures.ThreadPoolExecutor(max_workers=args.t) as executor:
+        for time_index in range(0, num_times):
             print("INFO: Processing time slice {:d} of {:d}".format(time_index + 1, num_times), flush=True)
             subd_inputs = [[] for i in range(args.t)]
-            subd_wind_scaled = [[] for i in range(args.t)]
             # Generate inputs for roughness_adjust
             if args.wfmt == "owi-ascii":
                 input_wind = owi_ascii.get(time_index)
@@ -821,22 +831,32 @@ def main():
                 for i in range(0, args.t):
                     subd_inputs[i] = [input_wind, None, args.wfmt, None, z0_wr, None, subd_z0_hr[i],
                                       subd_z0_directional_interpolant[i], None, None, None, None, None]
-            # Call roughness_adjust for each subdomain individually; multiprocessing.pool.map uses pickle protocol 3, which limits inputs to 4 GiB
-            for i in range(0, args.t):
-                subd_wind_scaled[i] = pool.map(roughness_adjust, [subd_inputs[i]])[0]
-            u_scaled, v_scaled = subd_restitch_domain(subd_wind_scaled, subd_start_index, subd_end_index, z0_hr.land_rough().shape, args.t)
-            wind_scaled = WindData(subd_wind_scaled[0].date(), WindGrid(z0_hr.lon(), z0_hr.lat()), u_scaled, v_scaled)
+            # Call roughness_adjust for each subdomain
+            subd_wind_scaled = executor.map(roughness_adjust, subd_inputs)
+            u_scaled, v_scaled, date = subd_restitch_domain(subd_wind_scaled, subd_start_index, subd_end_index, z0_hr.land_rough().shape, args.t)
+            wind_scaled = WindData(date, WindGrid(z0_hr.lon(), z0_hr.lat()), u_scaled, v_scaled)
             # Write to NetCDF; single-threaded with optional asynchronicity for now, as thread-safe NetCDF is complicated
             if not wind:
                 wind = NetcdfOutput(args.o, z0_hr.lon(), z0_hr.lat())
-            if args.wasync and num_times - time_index > 1:
-                threading.Thread(target=wind.append, args=(time_index, wind_scaled.date(),
-                                 wind_scaled.u_velocity(), wind_scaled.v_velocity())).start()
+            if args.wasync:
+                if time_index > 0 and not did_warn and write_thread[time_index - 1].is_alive():
+                    print("WARNING: NetCDF writes are taking longer than computations. This may result in higher memory use. "
+                          + "Consider using fewer threads or disabling asynchronous writes.", flush=True)
+                    did_warn = True
+                write_thread[time_index] = threading.Thread(target=wind.append, args=(time_index, wind_scaled.date(),
+                                                                                      wind_scaled.u_velocity(), wind_scaled.v_velocity(), lock))
+                write_thread[time_index].start()
             else:
-                wind.append(time_index, wind_scaled.date(), wind_scaled.u_velocity(), wind_scaled.v_velocity())
-            time_index += 1
+                wind.append(time_index, wind_scaled.date(), wind_scaled.u_velocity(), wind_scaled.v_velocity(), None)
+        # If writes are asynchronous, wait for all threads to return
+        if args.wasync:
+            for i in range(0, num_times):
+                if write_thread[i].is_alive():
+                    print("INFO: Writing output to NetCDF for time slice {:d} of {:d}".format(i + 1, num_times), flush=True)
+                write_thread[i].join()
 
-    if (args.wfmt == "owi-netcdf") | (args.wbackfmt == "owi-netcdf"):
+    # Clean up
+    if args.wfmt == "owi-netcdf" or args.wbackfmt == "owi-netcdf":
         owi_netcdf.close()
     wind.close()
     print("RICHAMP wind generation complete. Runtime:", str(datetime.datetime.now() - start), flush=True)
