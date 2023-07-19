@@ -4,12 +4,12 @@
 #SBATCH --output=uri_post.out
 #SBATCH --error=uri_post.err
 ##SBATCH -p lowpri
-#SBATCH -p uri-cpu
+##SBATCH -p uri-cpu
 #SBATCH -c 4
 #SBATCH --mem=16G
-#SBATCH -t 06:00:00
-##SBATCH --reservation=richamp
-##SBATCH --partitionname=uri-richamp
+#SBATCH -t 01:00:00
+#SBATCH --reservation=richamp
+#SBATCH --partition=uri-richamp
 
 # METGET_API_KEY and METGET_ENDPOINT environment variables must be set in order for
 # get_metget_data.py to succeed
@@ -111,7 +111,7 @@ wind_output=$output.nc
 water_output=RICHAMP_fort63.nc
 precip_output=$precip_filename.nc
 max_inund_plot=RICHAMP_max_inundation.png
-output_dir=/work/pi_iginis_uri_edu/RICHAMP/pp_files_2/$ENSTORM
+output_dir=/work/pi_iginis_uri_edu/RICHAMP/pp_files/$ENSTORM
 cp $wind_output $water_output $precip_output $max_inund_plot $RUNPROPERTIES $output_dir
 if [ $tc_forcing == "on" ]; then
    shapefile1='Track.shp'
