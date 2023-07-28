@@ -852,7 +852,7 @@ def main():
         if args.wasync:
             for i in range(0, num_times):
                 if write_thread[i].is_alive():
-                    print("INFO: Writing output to NetCDF for time slice {:d} of {:d}".format(i + 1, num_times), flush=True)
+                    print("INFO: Still writing output to NetCDF for time slice {:d} of {:d}".format(i + 1, num_times), flush=True)
                 write_thread[i].join()
 
     # Clean up
