@@ -1,4 +1,4 @@
-function plot_max_inundation(indir, outdir, nc_rough, scenario)
+function plot_max_inundation(indir, outdir, nc_rough, scenario, forcing)
     % Sanitize input
     if indir(end) ~= '/'
         indir = strcat(indir,'/');
@@ -6,12 +6,18 @@ function plot_max_inundation(indir, outdir, nc_rough, scenario)
     if outdir(end) ~= '/'
         outdir = strcat(outdir,'/');
     end
-    if scenario == "forecast"
-        scen_label = 'Center-Track';
-    elseif scenario == "veerLeftEdge"
-        scen_label = 'Left-Edge-Track';
-    elseif scenario == "veerRightEdge"
-        scen_label = 'Right-Edge-Track';
+    if forcing == "NHC"
+        if scenario == "forecast"
+            scen_label = 'Center-Track Scenario';
+        elseif scenario == "veerLeftEdge"
+            scen_label = 'Left-Edge-Track Scenario';
+        elseif scenario == "veerRightEdge"
+            scen_label = 'Right-Edge-Track Scenario';
+        else
+            scen_label = strcat(scenario," Scenario");
+        end
+    else
+        scen_label = strcat(forcing," Forcing");
     end
 
     % Specify file names
@@ -80,7 +86,7 @@ function plot_max_inundation(indir, outdir, nc_rough, scenario)
     xlabel('Longitude [°E]')
     ylabel('Latitude [°N]') 
     c.Label.String = 'SSH [m]';
-    title([strcat("Maximum Inundation from ",string(t(1))," to ",string(t(end))),strcat(scen_label," Scenario")])
+    title([strcat("Maximum Inundation from ",string(t(1))," to ",string(t(end))),scen_label])
     axis([lon_min,lon_max,lat_min,lat_max])
     daspect([onedeglat onedeglon 1])
     ax = gca;
