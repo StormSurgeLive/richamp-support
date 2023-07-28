@@ -5,134 +5,61 @@
 #SBATCH --error=uri_post.err
 ##SBATCH -p lowpri
 #SBATCH -p uri-cpu
-#SBATCH -c 4
-#SBATCH --mem=16G
+#SBATCH -c 1
+#SBATCH --mem=8G
 #SBATCH -t 01:00:00
 ##SBATCH --reservation=richamp
 ##SBATCH --partition=uri-richamp
 
-# METGET_API_KEY and METGET_ENDPOINT environment variables must be set in order for
-# get_metget_data.py to succeed
-
 targetScript="richamp_scale_and_subset.scr"
+postinitScript="richamp_scale_and_subset_post_init.scr"
+timeout=$((55*60))  # max time in seconds to wait for $postinitScript to finish
+logfile=$1  # first parameter passed from richamp_scale_and_subset.sh`
 echo "\"start\" : \"[$(date +'%Y-%h-%d-T%H:%M:%S%z')]\", \"jobid\" : \"${SLURM_JOBID}\"" > $targetScript.start # <-OVERWRITE
-asgs_python=$1  # first parameter passed from richamp_scale_and_subset.sh
+echo "[$(date +'%Y-%h-%d-T%H:%M:%S%z')] The batch job for $targetScript has started." >> $logfile
 
+# load run.properties file into associative array and extract relevant properties
 declare -A properties
 RUNPROPERTIES=run.properties #PWD should be the SCENARIODIR
-echo "Loading properties."
-# get loadProperties function
 SCRIPTDIR=`sed -n 's/[ ^]*$//;s/path.scriptdir\s*:\s*//p' $RUNPROPERTIES`
 source $SCRIPTDIR/properties.sh
-# load run.properties file into associative array
 loadProperties $RUNPROPERTIES
-echo "Finished loading properties."
-# get tc forcing status from run.properties
 tc_forcing=${properties['forcing.tropicalcyclone']}
 ENSTORM=${properties['asgs.enstorm']} # It's possible this is already set at the system level, but this doesn't hurt
-RSSSITE=${properties['forcing.tropicalcyclone.forecast.rsssite']} # Ditto
-FDIR=${properties['forcing.tropicalcyclone.forecast.path.fdir']} # Ditto
-ADVISDIR=${properties['asgs.path.advisdir']} # Ditto
-
-postprocessdir=$SCRIPTDIR/output/richamp-support
-
-# pull in metadata for MetGet calls   
-## get date range from run.properties
-t_start_raw=${properties['RunStartTime']}
-t_end_raw=${properties['RunEndTime']}
-## convert from yyyymmddHH to yyyy-mm-dd HH:MM
-t_start=${t_start_raw:0:4}-${t_start_raw:4:2}-${t_start_raw:6:2}" "${t_start_raw:8:2}:${t_start_raw:10:2}00
-t_end=${t_end_raw:0:4}-${t_end_raw:4:2}-${t_end_raw:6:2}" "${t_end_raw:8:2}:${t_end_raw:10:2}00
-
-# if TROPICALCYCLONE=on, call MetGet to get winds
-# if all commented code were to be uncommented, the logic becomes: if TROPICALCYCLONE=on, call URI parametric model and MetGet to get winds; attempt to blend them, but fall back to one or the other if necessary
+forcing=${properties['forcing.backgroundmet']}
 if [ $tc_forcing == "on" ]; then
-#   # run URI parametric model
-   track_only=1 # set to 0 and uncomment the rest of the code in this block to run with the parametric model
-   module load matlab/r2021b
-   matlab -nodesktop -nodisplay -nosplash -r "addpath $postprocessdir, try, ASGS_fort22_to_PWM_inputs $track_only, catch me, fprintf('%s / %s\n',me.identifier,me.message), end, exit"
-#   ln -s $postprocessdir/diag_parm.nml diag_parm.nml
-#   $postprocessdir/windgfdl
-#   wind_param=richamp.wnd
-#   wind_inp=Wind_Inp.txt
-   # call MetGet
-   wind_back_filename=gfs_forecast
-   $asgs_python $postprocessdir/get_metget_data.py --domain gfs 0.25 -72 41 -71 43 --start "$t_start" --end "$t_end" --timestep 3600 --output $wind_back_filename --multiple_forecasts --format owi-ascii --variable wind_pressure
-   wind_back=$wind_back_filename\_00.wnd
-#   # determine wind format based on available files
-#   if [[ ! -r "$wind_param" || ! -r "$wind_inp" ]] && [[ -r "$wind_back" ]]; then
-      wind_format="owi-ascii"
-#   elif [[ -r "$wind_param" && -r "$wind_inp" ]] && [[ ! -r "$wind_back" ]]; then
-#      wind_format="wnd"
-#   elif [[ -r "$wind_param" && -r "$wind_inp" ]] && [[ -r "$wind_back" ]]; then
-#      wind_format="blend"
-#   fi
+   forcing=NHC
 fi
 
-# call MetGet again for precipitation
-precip_filename=RICHAMP_rain
-$asgs_python $postprocessdir/get_metget_data.py --domain gfs 0.25 -72 41 -71 43 --start "$t_start" --end "$t_end" --timestep 3600 --output $precip_filename --multiple_forecasts --format hec-netcdf --variable rain
-
-# call python script to trim wind, interpolate to RICHAMP region of interest, and scale based on z0
-output=RICHAMP_wind
-highres_roughness=$postprocessdir/NLCD_z0_RICHAMP_Reg_Grid.nc
-wind_roughness=$postprocessdir/gfs-roughness.nc
-z0_interp_name=$postprocessdir/z0_interp
-threads=3 # $threads + wasync = the number in the header after -c
-sigma=1000
-radius=3000
-if [ $tc_forcing == "off" ]; then
-   wind_back=fort.222
-   wind_format="owi-ascii"
-fi
-if [[ -r ${z0_interp_name}.pickle ]]; then
-   z0_sv=''
-else
-   z0_sv='-z0sv'
-fi
-if [ $wind_format == "owi-ascii" ]; then
-   $asgs_python $postprocessdir/scale_and_subset.py -o $output -hr $highres_roughness -w $wind_back -wfmt $wind_format -wr $wind_roughness -z0name $z0_interp_name $z0_sv -r $radius -sigma $sigma -t $threads -wasync
-#elif [ $wind_format == "wnd" ]; then
-#   $asgs_python $postprocessdir/scale_and_subset.py -o $output -hr $highres_roughness -w $wind_param -wfmt $wind_format -winp $wind_inp -z0name $z0_interp_name $z0_sv -r $radius -sigma $sigma -t $threads -wasync
-#elif [ $wind_format == "blend" ]; then
-#   $asgs_python $postprocessdir/scale_and_subset.py -o $output -hr $highres_roughness -w $wind_param -wfmt "wnd" -winp $wind_inp -wback $wind_back -wbackfmt "owi-ascii" -wbackr $wind_roughness -z0name $z0_interp_name $z0_sv -r $radius -sigma $sigma -t $threads -wasync
-fi
-
-# call matlab scripts to trim depth data to RICHAMP region of interest and to generate a simple max inundation plot
+# call Matlab scripts to trim depth data to RICHAMP region of interest and to generate a simple max inundation plot
 indir=$PWD/  # Matlab script expects trailing slashes
 outdir=$PWD/
+postprocessdir=$SCRIPTDIR/output/richamp-support
 nc_rough=$postprocessdir/NLCD_z0_RICHAMP_Reg_Grid.nc
 module load matlab/r2021b
-matlab -nodesktop -nodisplay -nosplash -r "addpath $postprocessdir, try, subset_fort63_richamp $indir $outdir, plot_max_inundation $indir $outdir $nc_rough $ENSTORM, catch me, fprintf('%s / %s\n',me.identifier,me.message), end, exit"
+matlab -nodesktop -nodisplay -nosplash -r "addpath $postprocessdir, try, subset_fort63_richamp $indir $outdir, plot_max_inundation $indir $outdir $nc_rough $ENSTORM $forcing, catch me, fprintf('%s / %s\n',me.identifier,me.message), end, exit"
 
 # move files to a consistent location for dashboarding team 
-# s3 upload writes new files over existing files; currently disabled in favor of using a consistent folder on unity for speed reasons
-wind_output=$output.nc
 water_output=RICHAMP_fort63.nc
-precip_output=$precip_filename.nc
 max_inund_plot=RICHAMP_max_inundation.png
 output_dir=/work/pi_iginis_uri_edu/RICHAMP/pp_files/$ENSTORM
-cp $wind_output $water_output $precip_output $max_inund_plot $RUNPROPERTIES $output_dir
-if [ $tc_forcing == "on" ]; then
-   shapefile1='Track.shp'
-   shapefile2='Track.shx'
-   shapefile3='Track.dbf'
-   if [ $RSSSITE == "filesystem" ]; then
-      advisory=$FDIR/index-at.xml
-   else
-      advisory=$ADVISDIR/index-at.xml
-   fi
-   cp $shapefile1 $shapefile2 $shapefile3 $advisory $output_dir
-fi
-#bucket=s3://uri-inbre/RICHAMP
-#$HOME/bin/s3cmd put $wind_output $bucket/$wind_output
-#$HOME/bin/s3cmd put $water_output $bucket/$water_output
-#$HOME/bin/s3cmd put $precip_output $bucket/$precip_output
-#$HOME/bin/s3cmd put $track_file $bucket/$track_file
+cp $water_output $max_inund_plot $RUNPROPERTIES $output_dir
 
-# check to see if matlab script finished successfully
-if [[ $? == 0 ]]; then
-   echo "\"finish\" : \"[$(date +'%Y-%h-%d-T%H:%M:%S%z')]\", \"jobid\" : \"${SLURM_JOBID}\"" > $targetScript.finish # <-OVERWRITE
+# wait for the post_init script to finish; this allows that job to safely run alongside the forecast
+job_string=$(cat $postinitScript.start)
+search=jobid
+left_job_string=${job_string%%$search*}
+jobid_lit_idx=${#left_job_string}
+jobid_idx=$(($jobid_lit_idx+10))
+jobid=${job_string:$jobid_idx:7}
+echo "Waiting for "$postinitScript" to finish, if necessary."
+timeout $timeout tail --pid=$jobid -f /dev/null
+if [[ $? == 124 ]]; then
+   echo "Timeout occurred after waiting "$timeout" seconds for "$postinitScript" to finish. Check the logs for "$postinitScript" for problems. If all is working as intended, increase the timeout in "$targetScript" as needed."
 else
-   echo "\"error\" : \"[$(date +'%Y-%h-%d-T%H:%M:%S%z')]\", \"jobid\" : \"${SLURM_JOBID}\"" > $targetScript.error # <-OVERWRITE
+   echo "Job complete."
 fi
+
+echo "\"finish\" : \"[$(date +'%Y-%h-%d-T%H:%M:%S%z')]\", \"jobid\" : \"${SLURM_JOBID}\"" > $targetScript.finish # <-OVERWRITE
+echo "[$(date +'%Y-%h-%d-T%H:%M:%S%z')] The batch job for $targetScript has finished." >> $logfile
+

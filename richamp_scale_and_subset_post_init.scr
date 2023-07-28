@@ -1,0 +1,112 @@
+#!/bin/bash
+##SBATCH --constraint=hatteras
+#SBATCH --job-name=pst_init
+#SBATCH --output=uri_post_init.out
+#SBATCH --error=uri_post_init.err
+##SBATCH -p lowpri
+#SBATCH -p uri-cpu
+#SBATCH -c 4
+#SBATCH --mem=16G
+#SBATCH -t 01:00:00
+##SBATCH --reservation=richamp
+##SBATCH --partition=uri-richamp
+
+# METGET_API_KEY and METGET_ENDPOINT environment variables must be set in order for
+# get_metget_data.py to succeed
+
+targetScript="richamp_scale_and_subset_post_init.scr"
+logfile=$1  # first parameter passed from richamp_scale_and_subset_post_init.sh
+echo "\"start\" : \"[$(date +'%Y-%h-%d-T%H:%M:%S%z')]\", \"jobid\" : \"${SLURM_JOBID}\"" > $targetScript.start # <-OVERWRITE
+echo "[$(date +'%Y-%h-%d-T%H:%M:%S%z')] The batch job for $targetScript has started." >> $logfile
+
+# load run.properties file into associative array and extract relevant properties
+declare -A properties
+RUNPROPERTIES=run.properties #PWD should be the SCENARIODIR
+SCRIPTDIR=`sed -n 's/[ ^]*$//;s/path.scriptdir\s*:\s*//p' $RUNPROPERTIES`
+source $SCRIPTDIR/properties.sh
+loadProperties $RUNPROPERTIES
+tc_forcing=${properties['forcing.tropicalcyclone']}
+ENSTORM=${properties['asgs.enstorm']} # It's possible this is already set at the system level, but this doesn't hurt
+RSSSITE=${properties['forcing.tropicalcyclone.forecast.rsssite']} # Ditto
+FDIR=${properties['forcing.tropicalcyclone.forecast.path.fdir']} # Ditto
+ADVISDIR=${properties['asgs.path.advisdir']} # Ditto
+t_start_raw=${properties['RunStartTime']}
+t_end_raw=${properties['RunEndTime']}
+t_start=${t_start_raw:0:4}-${t_start_raw:4:2}-${t_start_raw:6:2}" "${t_start_raw:8:2}:${t_start_raw:10:2}00  # convert from yyyymmddHH to yyyy-mm-dd HH:MM
+t_end=${t_end_raw:0:4}-${t_end_raw:4:2}-${t_end_raw:6:2}" "${t_end_raw:8:2}:${t_end_raw:10:2}00  # convert from yyyymmddHH to yyyy-mm-dd HH:MM
+postprocessdir=$SCRIPTDIR/output/richamp-support
+
+# if TROPICALCYCLONE=on, call MetGet to get winds
+# if all commented code were to be uncommented, the logic becomes: if TROPICALCYCLONE=on, call URI parametric model and MetGet to get winds; attempt to blend them, but fall back to one or the other if necessary
+if [ $tc_forcing == "on" ]; then
+#   # run URI parametric model
+   track_only=1 # set to 0 and uncomment the rest of the code in this block to run with the parametric model
+   module load matlab/r2021b
+   matlab -nodesktop -nodisplay -nosplash -r "addpath $postprocessdir, try, ASGS_fort22_to_PWM_inputs $track_only, catch me, fprintf('%s / %s\n',me.identifier,me.message), end, exit"
+#   ln -s $postprocessdir/diag_parm.nml diag_parm.nml
+#   $postprocessdir/windgfdl
+#   wind_param=richamp.wnd
+#   wind_inp=Wind_Inp.txt
+   # call MetGet
+   wind_back_filename=gfs_forecast
+   python3 $postprocessdir/get_metget_data.py --domain gfs 0.25 -72 41 -71 43 --start "$t_start" --end "$t_end" --timestep 3600 --output $wind_back_filename --multiple_forecasts --format owi-ascii --variable wind_pressure
+   wind_back=$wind_back_filename\_00.wnd
+#   # determine wind format based on available files
+#   if [[ ! -r "$wind_param" || ! -r "$wind_inp" ]] && [[ -r "$wind_back" ]]; then
+      wind_format="owi-ascii"
+#   elif [[ -r "$wind_param" && -r "$wind_inp" ]] && [[ ! -r "$wind_back" ]]; then
+#      wind_format="wnd"
+#   elif [[ -r "$wind_param" && -r "$wind_inp" ]] && [[ -r "$wind_back" ]]; then
+#      wind_format="blend"
+#   fi
+fi
+
+# call MetGet again for precipitation
+precip_filename=RICHAMP_rain
+python3 $postprocessdir/get_metget_data.py --domain gfs 0.25 -72 41 -71 43 --start "$t_start" --end "$t_end" --timestep 3600 --output $precip_filename --multiple_forecasts --format hec-netcdf --variable rain
+
+# call python script to trim wind, interpolate to RICHAMP region of interest, and scale based on z0
+output=RICHAMP_wind
+highres_roughness=$postprocessdir/NLCD_z0_RICHAMP_Reg_Grid.nc
+wind_roughness=$postprocessdir/gfs-roughness.nc
+z0_interp_name=$postprocessdir/z0_interp
+threads=3 # $threads + wasync = the number in the header after -c
+sigma=1000
+radius=3000
+if [ $tc_forcing == "off" ]; then
+   wind_back=fort.222
+   wind_format="owi-ascii"
+fi
+if [[ -r ${z0_interp_name}.pickle ]]; then
+   z0_sv=''
+else
+   z0_sv='-z0sv'
+fi
+if [ $wind_format == "owi-ascii" ]; then
+   python3 $postprocessdir/scale_and_subset.py -o $output -hr $highres_roughness -w $wind_back -wfmt $wind_format -wr $wind_roughness -z0name $z0_interp_name $z0_sv -r $radius -sigma $sigma -t $threads -wasync
+#elif [ $wind_format == "wnd" ]; then
+#   python3 $postprocessdir/scale_and_subset.py -o $output -hr $highres_roughness -w $wind_param -wfmt $wind_format -winp $wind_inp -z0name $z0_interp_name $z0_sv -r $radius -sigma $sigma -t $threads -wasync
+#elif [ $wind_format == "blend" ]; then
+#   python3 $postprocessdir/scale_and_subset.py -o $output -hr $highres_roughness -w $wind_param -wfmt "wnd" -winp $wind_inp -wback $wind_back -wbackfmt "owi-ascii" -wbackr $wind_roughness -z0name $z0_interp_name $z0_sv -r $radius -sigma $sigma -t $threads -wasync
+fi
+
+# move files to a consistent location for dashboarding team 
+wind_output=$output.nc
+precip_output=$precip_filename.nc
+output_dir=/work/pi_iginis_uri_edu/RICHAMP/pp_files/$ENSTORM
+cp $wind_output $precip_output $output_dir
+if [ $tc_forcing == "on" ]; then
+   shapefile1='Track.shp'
+   shapefile2='Track.shx'
+   shapefile3='Track.dbf'
+   if [ $RSSSITE == "filesystem" ]; then
+      advisory=$FDIR/index-at.xml
+   else
+      advisory=$ADVISDIR/index-at.xml
+   fi
+   cp $shapefile1 $shapefile2 $shapefile3 $advisory $output_dir
+fi
+
+echo "\"finish\" : \"[$(date +'%Y-%h-%d-T%H:%M:%S%z')]\", \"jobid\" : \"${SLURM_JOBID}\"" > $targetScript.finish # <-OVERWRITE
+echo "[$(date +'%Y-%h-%d-T%H:%M:%S%z')] The batch job for $targetScript has finished." >> $logfile
+
