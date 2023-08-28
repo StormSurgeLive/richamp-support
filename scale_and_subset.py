@@ -414,8 +414,8 @@ def dir_met_to_and_from_math(direction):
 
 
 def direction_from_uv(u_vel, v_vel):
-    u_vel[u_vel == 0] = 0.0000000001  # Avoid divide by zero errors
-    dir_math = numpy.rad2deg(numpy.arctan(v_vel / u_vel))
+    with numpy.errstate(divide="ignore"):  # Don't warn for divide by 0
+        dir_math = numpy.rad2deg(numpy.arctan(numpy.divide(v_vel, u_vel)))
     # arctan only returns values from -pi/2 to pi/2. We need values from 0 to 2*pi.
     dir_math[u_vel < 0] = dir_math[u_vel < 0] + 180  # Quadrants 2 & 3
     dir_math[dir_math < 0] = dir_math[dir_math < 0] + 360  # Quadrant 4
@@ -875,7 +875,7 @@ def main():
             if args.wasync:
                 if time_index > 0 and not did_warn and write_thread[time_index - 1].is_alive():
                     print("WARNING: NetCDF writes are taking longer than computations. This may result in higher memory use. "
-                          + "Consider using fewer threads or disabling asynchronous writes.", flush=True)
+                          + "Especially if this warning appears early, consider using fewer threads or disabling asynchronous writes.", flush=True)
                     did_warn = True
                 write_thread[time_index] = threading.Thread(target=wind.append, args=(time_index, wind_scaled.date(),
                                                                                       wind_scaled.u_velocity(), wind_scaled.v_velocity(), lock))
