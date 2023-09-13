@@ -804,7 +804,7 @@ def main():
         lon_ctr_interpolant, lat_ctr_interpolant, time_ctr_date_0 = generate_ctr_interpolant()
         rmw_interpolant, time_rmw_date_0 = generate_rmw_interpolant()
 
-    # Define roughness grids; lat and land_rough are separate parameters so they can be updated later (see class)
+    # Define roughness grids
     if (args.wfmt == "owi-ascii") | (args.wfmt == "owi-netcdf"):
         wr_lon, wr_lat, wr_land_rough = Roughness.get(args.wr)
         z0_wr = Roughness(wr_lon, wr_lat, wr_land_rough)
